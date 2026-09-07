@@ -556,61 +556,127 @@ func getInitScript(ua string) string {
 			}, true);
 		})();
 
-		// Floating Quick Controls Button & Control Center Modal
+		// Theme Manager, In-Flow Header Toolbar Button & Control Center Modal
 		(function() {
 			var isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+			var currentTheme = 'dark';
 
-			// 1. Inject Floating "Kontrol" Button at Top Corner
-			function injectFloatingBtn() {
-				if (document.getElementById('wa-floating-settings-btn')) return;
-				if (!document.body) return;
+			// --- Theme Management ---
+			function applyThemeToDOM(theme) {
+				currentTheme = theme;
+				var isDark = false;
+				if (theme === 'system') {
+					isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+				} else {
+					isDark = (theme === 'dark');
+				}
+
+				if (isDark) {
+					document.documentElement.classList.add('dark');
+					document.documentElement.classList.remove('light');
+					if (document.body) {
+						document.body.classList.add('dark');
+						document.body.classList.remove('light');
+					}
+					document.documentElement.setAttribute('data-theme', 'dark');
+					document.documentElement.style.colorScheme = 'dark';
+				} else {
+					document.documentElement.classList.remove('dark');
+					document.documentElement.classList.add('light');
+					if (document.body) {
+						document.body.classList.remove('dark');
+						document.body.classList.add('light');
+					}
+					document.documentElement.setAttribute('data-theme', 'light');
+					document.documentElement.style.colorScheme = 'light';
+				}
+
+				// Update modal if currently visible
+				if (window.syncModalTheme) {
+					window.syncModalTheme(isDark);
+				}
+			}
+
+			window.getAppTheme = function() {
+				return currentTheme;
+			};
+
+			window.setAppTheme = function(theme) {
+				if (theme !== 'dark' && theme !== 'light' && theme !== 'system') {
+					theme = 'dark';
+				}
+				applyThemeToDOM(theme);
+				try {
+					localStorage.setItem('theme', JSON.stringify(theme));
+				} catch(e) {}
+				if (window.setAppThemeNative) {
+					window.setAppThemeNative(theme);
+				}
+				showFloatingToast(theme === 'dark' ? '🌙 Tema: Mode Gelap' : (theme === 'light' ? '☀️ Tema: Mode Terang' : '💻 Tema: Mengikuti Sistem'));
+			};
+
+			// Listen for system appearance changes when in system mode
+			if (window.matchMedia) {
+				window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+					if (currentTheme === 'system') {
+						applyThemeToDOM('system');
+					}
+				});
+			}
+
+			// Load saved theme from native settings
+			if (window.getAppThemeNative) {
+				window.getAppThemeNative().then(function(savedTheme) {
+					if (savedTheme) {
+						applyThemeToDOM(savedTheme);
+					}
+				});
+			}
+
+			// --- In-Flow Header Toolbar Button (Non-Floating, Clean WhatsApp Style) ---
+			function injectHeaderToolbarBtn() {
+				if (document.getElementById('wa-toolbar-settings-btn')) return;
+
+				// Target WhatsApp Web's left header above chats
+				var header = document.querySelector('#side header') || document.querySelector('header');
+				if (!header) return;
+
+				// Find actions container inside header (where Status, Channels, New Chat icons live)
+				var actionsWrap = header.querySelector('div:last-child') || header.querySelector('span:last-child') || header;
+				if (!actionsWrap) return;
 
 				var btn = document.createElement('button');
-				btn.id = 'wa-floating-settings-btn';
-				btn.title = 'Buka Pusat Kontrol & Pengaturan (' + (isMac ? 'Cmd' : 'Ctrl') + ' + ,)';
-				btn.innerHTML = '' +
-					'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
-					'  <circle cx="12" cy="12" r="3"></circle>' +
-					'  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>' +
-					'</svg>' +
-					'<span>Kontrol</span>';
-
-				var rightPos = isMac ? '18px' : '150px';
-				btn.style.cssText = 'position:fixed;top:10px;right:' + rightPos + ';z-index:999998;' +
-					'background:rgba(32,44,51,0.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);' +
-					'color:#aebac1;border:1px solid rgba(255,255,255,0.12);border-radius:16px;' +
-					'padding:4px 10px;font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:6px;' +
-					'cursor:pointer;outline:none;box-shadow:0 3px 12px rgba(0,0,0,0.35);transition:all 0.18s ease;' +
-					'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;user-select:none;';
+				btn.id = 'wa-toolbar-settings-btn';
+				btn.setAttribute('aria-label', 'Pengaturan & Kontrol');
+				btn.title = 'Pengaturan & Kontrol (' + (isMac ? 'Cmd' : 'Ctrl') + ' + ,)';
+				btn.style.cssText = 'width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:none;color:#aebac1;cursor:pointer;outline:none;transition:background-color 0.15s ease, color 0.15s ease;flex-shrink:0;margin:0 2px;';
+				btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+					'<circle cx="12" cy="12" r="3"></circle>' +
+					'<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>' +
+					'</svg>';
 
 				btn.onmouseenter = function() {
-					btn.style.background = 'rgba(42,57,66,0.98)';
-					btn.style.color = '#00a884';
-					btn.style.borderColor = 'rgba(0,168,132,0.45)';
-					btn.style.transform = 'translateY(-1px)';
-					btn.style.boxShadow = '0 5px 16px rgba(0,0,0,0.5)';
+					btn.style.backgroundColor = document.body.classList.contains('dark') ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+					btn.style.color = document.body.classList.contains('dark') ? '#e9edef' : '#111b21';
 				};
 				btn.onmouseleave = function() {
-					btn.style.background = 'rgba(32,44,51,0.85)';
+					btn.style.backgroundColor = 'transparent';
 					btn.style.color = '#aebac1';
-					btn.style.borderColor = 'rgba(255,255,255,0.12)';
-					btn.style.transform = 'translateY(0)';
-					btn.style.boxShadow = '0 3px 12px rgba(0,0,0,0.35)';
 				};
 				btn.onclick = function(e) {
 					e.stopPropagation();
 					window.showSettingsModal();
 				};
 
-				document.body.appendChild(btn);
+				actionsWrap.appendChild(btn);
 			}
 
-			injectFloatingBtn();
-			document.addEventListener('DOMContentLoaded', injectFloatingBtn);
-			window.addEventListener('load', injectFloatingBtn);
-			setInterval(injectFloatingBtn, 2000);
+			injectHeaderToolbarBtn();
+			document.addEventListener('DOMContentLoaded', injectHeaderToolbarBtn);
+			window.addEventListener('load', injectHeaderToolbarBtn);
+			setInterval(injectHeaderToolbarBtn, 2000);
 
-			// 2. Full Interactive Control Center & Settings Modal
+			// --- Minimalist WhatsApp Control Center Modal ---
 			window.showSettingsModal = function() {
 				if (document.getElementById('wa-settings-overlay')) {
 					var ex = document.getElementById('wa-settings-overlay');
@@ -618,98 +684,124 @@ func getInitScript(ua string) string {
 					return;
 				}
 
+				var isDark = currentTheme === 'system' ?
+					(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) :
+					(currentTheme === 'dark');
+
 				var overlay = document.createElement('div');
 				overlay.id = 'wa-settings-overlay';
-				overlay.style.cssText = 'position:fixed;inset:0;background:rgba(11,20,26,0.86);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);z-index:9999999;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#e9edef;animation:waModalIn 0.22s cubic-bezier(0.16,1,0.3,1);';
+				overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999999;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;';
 
 				var modal = document.createElement('div');
-				modal.style.cssText = 'width:560px;max-width:96vw;max-height:90vh;background:#111b21;border:1px solid rgba(255,255,255,0.14);border-radius:18px;box-shadow:0 32px 80px rgba(0,0,0,0.9);padding:22px 24px;box-sizing:border-box;display:flex;flex-direction:column;gap:15px;overflow-y:auto;';
+				modal.id = 'wa-settings-container';
+				modal.style.cssText = 'width:540px;max-width:96vw;max-height:90vh;border-radius:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;overflow-y:auto;padding:20px 22px;';
 
 				// Header
 				var header = document.createElement('div');
-				header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:12px;';
+				header.id = 'wa-modal-header';
+				header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;border-bottom-width:1px;border-bottom-style:solid;padding-bottom:12px;';
 				header.innerHTML = '' +
-					'<div style="display:flex;align-items:center;gap:12px;">' +
-					'  <div style="width:36px;height:36px;border-radius:10px;background:rgba(0,168,132,0.15);display:flex;align-items:center;justify-content:center;color:#00a884;flex-shrink:0;">' +
-					'    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>' +
+					'<div style="display:flex;align-items:center;gap:10px;">' +
+					'  <div id="wa-modal-icon-wrap" style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;">' +
+					'    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>' +
 					'  </div>' +
 					'  <div>' +
-					'    <h3 style="margin:0;font-size:16px;font-weight:600;color:#e9edef;">Pusat Kontrol & Pengaturan</h3>' +
-					'    <span style="font-size:12px;color:#8696a0;">Akses semua fitur dan pintasan langsung dengan sekali klik</span>' +
+					'    <h3 id="wa-modal-title" style="margin:0;font-size:15.5px;font-weight:600;">Pengaturan & Kontrol</h3>' +
+					'    <span id="wa-modal-sub" style="font-size:11.5px;">Akses seluruh fitur WhatsApp tanpa perlu menghafal shortcut</span>' +
 					'  </div>' +
 					'</div>' +
-					'<button id="wa-settings-close-x" style="background:transparent;border:none;color:#8696a0;cursor:pointer;font-size:18px;line-height:1;padding:6px 10px;border-radius:6px;transition:color 0.15s;">✕</button>';
+					'<button id="wa-settings-close-x" style="background:transparent;border:none;cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;">✕</button>';
 				modal.appendChild(header);
+
+				// Section 0: Theme Switcher Segmented Control
+				var themeBox = document.createElement('div');
+				themeBox.className = 'wa-modal-card';
+				themeBox.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:8px;border-width:1px;border-style:solid;gap:10px;';
+				themeBox.innerHTML = '' +
+					'<div>' +
+					'  <strong class="wa-text-primary" style="font-size:12.5px;display:block;">Tema Tampilan WhatsApp</strong>' +
+					'  <span class="wa-text-muted" style="font-size:11px;">Pilih mode gelap, terang, atau ikuti sistem</span>' +
+					'</div>' +
+					'<div style="display:flex;align-items:center;gap:4px;">' +
+					'  <button id="wa-theme-btn-dark" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">🌙 Gelap</button>' +
+					'  <button id="wa-theme-btn-light" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">☀️ Terang</button>' +
+					'  <button id="wa-theme-btn-system" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">💻 Auto</button>' +
+					'</div>';
+				modal.appendChild(themeBox);
 
 				// Section 1: Quick Interactive Controls (2-Column Grid)
 				var quickGrid = document.createElement('div');
-				quickGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:10px;';
+				quickGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
 
 				// Card 1: Privacy Mode
 				var cardPrivacy = document.createElement('div');
-				cardPrivacy.style.cssText = 'background:rgba(32,44,51,0.6);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;gap:10px;';
+				cardPrivacy.className = 'wa-modal-card';
+				cardPrivacy.style.cssText = 'border-radius:8px;border-width:1px;border-style:solid;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;';
 				cardPrivacy.innerHTML = '' +
 					'<div>' +
-					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
-					'    <strong style="font-size:13px;color:#e9edef;">🔒 Mode Privasi</strong>' +
-					'    <span id="wa-badge-priv" style="font-size:10.5px;padding:1px 6px;border-radius:8px;font-weight:600;">...</span>' +
+					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">🔒 Mode Privasi</strong>' +
+					'    <span id="wa-badge-priv" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
-					'  <div style="font-size:11px;color:#8696a0;line-height:1.35;">Sensor chat & media saat kursor menjauh.</div>' +
+					'  <div class="wa-text-muted" style="font-size:11px;">Sensor chat & media saat kursor menjauh.</div>' +
 					'</div>' +
-					'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">' +
-					'  <kbd style="font-size:10px;color:#8696a0;background:#111b21;padding:2px 5px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+P</kbd>' +
-					'  <button id="wa-action-toggle-priv" style="background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.12);padding:5px 12px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;transition:all 0.15s;">Toggle</button>' +
+					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
+					'  <span class="wa-text-muted" style="font-size:10px;font-family:monospace;">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+P</span>' +
+					'  <button id="wa-action-toggle-priv" class="wa-card-btn" style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border-width:1px;border-style:solid;">Toggle</button>' +
 					'</div>';
 				quickGrid.appendChild(cardPrivacy);
 
 				// Card 2: Always on Top
 				var cardPin = document.createElement('div');
-				cardPin.style.cssText = 'background:rgba(32,44,51,0.6);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;gap:10px;';
+				cardPin.className = 'wa-modal-card';
+				cardPin.style.cssText = 'border-radius:8px;border-width:1px;border-style:solid;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;';
 				cardPin.innerHTML = '' +
 					'<div>' +
-					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
-					'    <strong style="font-size:13px;color:#e9edef;">📌 Pin Jendela</strong>' +
-					'    <span id="wa-badge-pin" style="font-size:10.5px;padding:1px 6px;border-radius:8px;font-weight:600;">...</span>' +
+					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">📌 Pin Jendela</strong>' +
+					'    <span id="wa-badge-pin" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
-					'  <div style="font-size:11px;color:#8696a0;line-height:1.35;">Jendela tetap di atas aplikasi lain.</div>' +
+					'  <div class="wa-text-muted" style="font-size:11px;">Jendela selalu di depan aplikasi lain.</div>' +
 					'</div>' +
-					'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">' +
-					'  <kbd style="font-size:10px;color:#8696a0;background:#111b21;padding:2px 5px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+T</kbd>' +
-					'  <button id="wa-action-toggle-pin" style="background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.12);padding:5px 12px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;transition:all 0.15s;">Toggle</button>' +
+					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
+					'  <span class="wa-text-muted" style="font-size:10px;font-family:monospace;">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+T</span>' +
+					'  <button id="wa-action-toggle-pin" class="wa-card-btn" style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border-width:1px;border-style:solid;">Toggle</button>' +
 					'</div>';
 				quickGrid.appendChild(cardPin);
 
 				// Card 3: Audio Mute
 				var cardMute = document.createElement('div');
-				cardMute.style.cssText = 'background:rgba(32,44,51,0.6);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;gap:10px;';
+				cardMute.className = 'wa-modal-card';
+				cardMute.style.cssText = 'border-radius:8px;border-width:1px;border-style:solid;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;';
 				cardMute.innerHTML = '' +
 					'<div>' +
-					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
-					'    <strong style="font-size:13px;color:#e9edef;">🔇 Notifikasi Suara</strong>' +
-					'    <span id="wa-badge-mute" style="font-size:10.5px;padding:1px 6px;border-radius:8px;font-weight:600;">...</span>' +
+					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">🔇 Notifikasi Suara</strong>' +
+					'    <span id="wa-badge-mute" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
-					'  <div style="font-size:11px;color:#8696a0;line-height:1.35;">Senyapkan seluruh audio nada dering.</div>' +
+					'  <div class="wa-text-muted" style="font-size:11px;">Senyapkan seluruh audio notifikasi.</div>' +
 					'</div>' +
-					'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">' +
-					'  <kbd style="font-size:10px;color:#8696a0;background:#111b21;padding:2px 5px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+M</kbd>' +
-					'  <button id="wa-action-toggle-mute" style="background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.12);padding:5px 12px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;transition:all 0.15s;">Toggle</button>' +
+					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
+					'  <span class="wa-text-muted" style="font-size:10px;font-family:monospace;">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+M</span>' +
+					'  <button id="wa-action-toggle-mute" class="wa-card-btn" style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border-width:1px;border-style:solid;">Toggle</button>' +
 					'</div>';
 				quickGrid.appendChild(cardMute);
 
 				// Card 4: Auto-Start
 				var cardAuto = document.createElement('div');
-				cardAuto.style.cssText = 'background:rgba(32,44,51,0.6);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:12px;display:flex;flex-direction:column;justify-content:space-between;gap:10px;';
+				cardAuto.className = 'wa-modal-card';
+				cardAuto.style.cssText = 'border-radius:8px;border-width:1px;border-style:solid;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;';
 				cardAuto.innerHTML = '' +
 					'<div>' +
-					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">' +
-					'    <strong style="font-size:13px;color:#e9edef;">🚀 Buka saat Boot</strong>' +
-					'    <span id="wa-badge-auto" style="font-size:10.5px;padding:1px 6px;border-radius:8px;font-weight:600;">...</span>' +
+					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">🚀 Buka saat Boot</strong>' +
+					'    <span id="wa-badge-auto" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
-					'  <div style="font-size:11px;color:#8696a0;line-height:1.35;">Mulai WhatsApp otomatis saat login.</div>' +
+					'  <div class="wa-text-muted" style="font-size:11px;">Mulai WhatsApp otomatis saat komputer nyala.</div>' +
 					'</div>' +
-					'<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">' +
-					'  <kbd style="font-size:10px;color:#8696a0;background:#111b21;padding:2px 5px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+S</kbd>' +
-					'  <button id="wa-action-toggle-auto" style="background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.12);padding:5px 12px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;transition:all 0.15s;">Toggle</button>' +
+					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
+					'  <span class="wa-text-muted" style="font-size:10px;font-family:monospace;">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+S</span>' +
+					'  <button id="wa-action-toggle-auto" class="wa-card-btn" style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border-width:1px;border-style:solid;">Toggle</button>' +
 					'</div>';
 				quickGrid.appendChild(cardAuto);
 
@@ -717,42 +809,45 @@ func getInitScript(ua string) string {
 
 				// Section 2: Download Folder Settings
 				var folderSection = document.createElement('div');
-				folderSection.style.cssText = 'display:flex;flex-direction:column;gap:10px;background:rgba(32,44,51,0.5);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px;';
+				folderSection.className = 'wa-modal-card';
+				folderSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;border-radius:8px;border-width:1px;border-style:solid;padding:12px;';
 				folderSection.innerHTML = '' +
 					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
-					'  <strong style="font-size:13px;color:#e9edef;">📁 Folder Simpan Berkas & Media Unduhan</strong>' +
-					'  <button id="wa-btn-reset-folder" style="background:transparent;border:none;color:#00a884;font-size:11.5px;cursor:pointer;padding:2px 6px;">Reset Default</button>' +
+					'  <strong class="wa-text-primary" style="font-size:12.5px;">📁 Folder Simpan Unduhan Chat</strong>' +
+					'  <button id="wa-btn-reset-folder" style="background:transparent;border:none;color:#00a884;font-size:11px;cursor:pointer;padding:2px 4px;">Reset Default</button>' +
 					'</div>' +
-					'<div style="font-size:11px;color:#8696a0;line-height:1.4;">Gambar, video, dan dokumen yang Anda unduh dari chat otomatis disimpan permanen di folder ini:</div>' +
-					'<div style="display:flex;align-items:center;background:#111b21;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:7px 10px;min-width:0;">' +
-					'  <span id="wa-folder-path" style="font-size:12px;color:#8696a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;font-family:monospace;">Memuat direktori...</span>' +
+					'<div class="wa-text-muted" style="font-size:11px;">Berkas & media yang diunduh dari chat otomatis tersimpan permanen di sini:</div>' +
+					'<div id="wa-folder-box" style="display:flex;align-items:center;border-width:1px;border-style:solid;border-radius:6px;padding:6px 8px;min-width:0;">' +
+					'  <span id="wa-folder-path" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;font-family:monospace;">Memuat...</span>' +
 					'</div>' +
-					'<div style="display:flex;align-items:center;gap:8px;margin-top:2px;">' +
-					'  <button id="wa-btn-change-folder" style="flex:1;background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.12);padding:7px 12px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;transition:all 0.15s;">Ubah Lokasi Folder...</button>' +
-					'  <button id="wa-btn-open-folder" style="background:#00a884;color:#111b21;border:none;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s;">' + (isMac ? 'Buka di Finder' : 'Buka Folder') + '</button>' +
+					'<div style="display:flex;align-items:center;gap:6px;margin-top:2px;">' +
+					'  <button id="wa-btn-change-folder" class="wa-card-btn" style="flex:1;padding:6px 10px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;">Ubah Lokasi Folder...</button>' +
+					'  <button id="wa-btn-open-folder" style="background:#00a884;color:#111b21;border:none;padding:6px 12px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;">' + (isMac ? 'Buka di Finder' : 'Buka Folder') + '</button>' +
 					'</div>';
 				modal.appendChild(folderSection);
 
 				// Section 3: Maintenance & Update Actions
 				var actionsSection = document.createElement('div');
-				actionsSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;background:rgba(32,44,51,0.3);border:1px solid rgba(255,255,255,0.04);border-radius:12px;padding:12px 14px;';
+				actionsSection.className = 'wa-modal-card';
+				actionsSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;border-radius:8px;border-width:1px;border-style:solid;padding:10px 12px;';
 				actionsSection.innerHTML = '' +
-					'<strong style="font-size:12px;color:#8696a0;">Tindakan Cepat & Pembaruan:</strong>' +
-					'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
-					'  <button id="wa-btn-check-updates-modal" style="background:#202c33;color:#00a884;border:1px solid rgba(0,168,132,0.3);padding:7px 10px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;text-align:center;transition:all 0.15s;">🔍 Periksa Pembaruan</button>' +
-					'  <button id="wa-btn-reload-modal" style="background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:7px 10px;border-radius:8px;font-size:11.5px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.15s;">🔄 Muat Ulang Chat</button>' +
-					'  <button id="wa-btn-hardref-modal" style="background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:7px 10px;border-radius:8px;font-size:11.5px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.15s;">⚡ Bersihkan Cache</button>' +
-					'  <button id="wa-btn-onboard-modal" style="background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:7px 10px;border-radius:8px;font-size:11.5px;font-weight:500;cursor:pointer;text-align:center;transition:all 0.15s;">📘 Panduan Aplikasi</button>' +
+					'<strong class="wa-text-muted" style="font-size:11.5px;">Tindakan Cepat & Pemeliharaan:</strong>' +
+					'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">' +
+					'  <button id="wa-btn-check-updates-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">🔍 Periksa Update</button>' +
+					'  <button id="wa-btn-reload-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">🔄 Muat Ulang Chat</button>' +
+					'  <button id="wa-btn-hardref-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">⚡ Bersihkan Cache</button>' +
+					'  <button id="wa-btn-onboard-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">📘 Panduan Singkat</button>' +
 					'</div>';
 				modal.appendChild(actionsSection);
 
 				// Footer
 				var footer = document.createElement('div');
 				footer.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:2px;';
-				footer.innerHTML = '<span style="font-size:11px;color:#8696a0;">Tekan <kbd style="background:#111b21;padding:1px 4px;border-radius:3px;border:1px solid #3b4a54;">Esc</kbd> untuk menutup</span>';
+				footer.innerHTML = '<span class="wa-text-muted" style="font-size:10.5px;">Tekan <kbd style="padding:1px 3px;border-radius:3px;font-family:monospace;">Esc</kbd> untuk menutup</span>';
 				var btnDone = document.createElement('button');
 				btnDone.textContent = 'Selesai';
-				btnDone.style.cssText = 'background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:6px 18px;font-size:12px;font-weight:600;cursor:pointer;';
+				btnDone.id = 'wa-btn-done';
+				btnDone.style.cssText = 'padding:5px 16px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;border-width:1px;border-style:solid;';
 				footer.appendChild(btnDone);
 				modal.appendChild(footer);
 
@@ -761,6 +856,7 @@ func getInitScript(ua string) string {
 
 				function closeSettings() {
 					window.removeEventListener('keydown', onKeyClose);
+					window.syncModalTheme = null;
 					if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
 				}
 				function onKeyClose(e) {
@@ -773,15 +869,85 @@ func getInitScript(ua string) string {
 					if (e.target === overlay) closeSettings();
 				};
 
+				// Styling Synchronizer for Modal (Dark / Light Theme)
+				window.syncModalTheme = function(isThemeDark) {
+					var bg = isThemeDark ? '#111b21' : '#ffffff';
+					var cardBg = isThemeDark ? '#202c33' : '#f0f2f5';
+					var border = isThemeDark ? '#2a3942' : '#d1d7db';
+					var textPri = isThemeDark ? '#e9edef' : '#111b21';
+					var textMut = isThemeDark ? '#8696a0' : '#667781';
+					var accent = isThemeDark ? '#00a884' : '#008069';
+
+					modal.style.background = bg;
+					modal.style.border = '1px solid ' + border;
+					header.style.borderBottomColor = border;
+					document.getElementById('wa-modal-title').style.color = textPri;
+					document.getElementById('wa-modal-sub').style.color = textMut;
+					document.getElementById('wa-modal-icon-wrap').style.background = isThemeDark ? 'rgba(0,168,132,0.15)' : 'rgba(0,128,105,0.12)';
+					document.getElementById('wa-modal-icon-wrap').style.color = accent;
+					document.getElementById('wa-settings-close-x').style.color = textMut;
+
+					document.querySelectorAll('.wa-modal-card').forEach(function(el) {
+						el.style.background = cardBg;
+						el.style.borderColor = border;
+					});
+					document.querySelectorAll('.wa-text-primary').forEach(function(el) {
+						el.style.color = textPri;
+					});
+					document.querySelectorAll('.wa-text-muted').forEach(function(el) {
+						el.style.color = textMut;
+					});
+
+					var fBox = document.getElementById('wa-folder-box');
+					if (fBox) {
+						fBox.style.background = isThemeDark ? '#111b21' : '#ffffff';
+						fBox.style.borderColor = border;
+					}
+					var fPath = document.getElementById('wa-folder-path');
+					if (fPath) fPath.style.color = textMut;
+
+					var btnOpen = document.getElementById('wa-btn-open-folder');
+					if (btnOpen) {
+						btnOpen.style.background = accent;
+						btnOpen.style.color = isThemeDark ? '#111b21' : '#ffffff';
+					}
+
+					document.querySelectorAll('.wa-card-btn').forEach(function(el) {
+						el.style.background = isThemeDark ? '#111b21' : '#ffffff';
+						el.style.borderColor = border;
+						el.style.color = textPri;
+					});
+
+					btnDone.style.background = isThemeDark ? '#202c33' : '#e9edef';
+					btnDone.style.borderColor = border;
+					btnDone.style.color = textPri;
+
+					// Theme segment buttons
+					['dark', 'light', 'system'].forEach(function(mode) {
+						var tBtn = document.getElementById('wa-theme-btn-' + mode);
+						if (tBtn) {
+							var active = (currentTheme === mode);
+							tBtn.style.background = active ? accent : (isThemeDark ? '#111b21' : '#ffffff');
+							tBtn.style.color = active ? (isThemeDark ? '#111b21' : '#ffffff') : textPri;
+							tBtn.style.borderColor = active ? accent : border;
+						}
+					});
+				};
+
 				// Synchronize Toggle Badges & Button States
 				function updateBadges() {
+					var isThemeDark = currentTheme === 'system' ?
+						(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) :
+						(currentTheme === 'dark');
+					var accent = isThemeDark ? '#00a884' : '#008069';
+
 					var privActive = window.isPrivacyModeActive ? window.isPrivacyModeActive() : false;
 					var badgePriv = document.getElementById('wa-badge-priv');
 					var btnPriv = document.getElementById('wa-action-toggle-priv');
 					if (badgePriv && btnPriv) {
 						badgePriv.textContent = privActive ? 'Aktif' : 'Nonaktif';
-						badgePriv.style.background = privActive ? 'rgba(0,168,132,0.15)' : 'rgba(255,255,255,0.06)';
-						badgePriv.style.color = privActive ? '#00a884' : '#8696a0';
+						badgePriv.style.background = privActive ? (isThemeDark ? 'rgba(0,168,132,0.15)' : 'rgba(0,128,105,0.15)') : 'transparent';
+						badgePriv.style.color = privActive ? accent : '#8696a0';
 						btnPriv.textContent = privActive ? 'Matikan' : 'Aktifkan';
 					}
 
@@ -790,8 +956,8 @@ func getInitScript(ua string) string {
 					var btnPin = document.getElementById('wa-action-toggle-pin');
 					if (badgePin && btnPin) {
 						badgePin.textContent = pinActive ? 'Aktif' : 'Nonaktif';
-						badgePin.style.background = pinActive ? 'rgba(0,168,132,0.15)' : 'rgba(255,255,255,0.06)';
-						badgePin.style.color = pinActive ? '#00a884' : '#8696a0';
+						badgePin.style.background = pinActive ? (isThemeDark ? 'rgba(0,168,132,0.15)' : 'rgba(0,128,105,0.15)') : 'transparent';
+						badgePin.style.color = pinActive ? accent : '#8696a0';
 						btnPin.textContent = pinActive ? 'Lepas' : 'Pin';
 					}
 
@@ -800,8 +966,8 @@ func getInitScript(ua string) string {
 					var btnMute = document.getElementById('wa-action-toggle-mute');
 					if (badgeMute && btnMute) {
 						badgeMute.textContent = muteActive ? 'Senyap' : 'Bersuara';
-						badgeMute.style.background = muteActive ? 'rgba(234,0,56,0.15)' : 'rgba(0,168,132,0.15)';
-						badgeMute.style.color = muteActive ? '#ff5252' : '#00a884';
+						badgeMute.style.background = muteActive ? 'rgba(234,0,56,0.15)' : 'transparent';
+						badgeMute.style.color = muteActive ? '#ff5252' : accent;
 						btnMute.textContent = muteActive ? 'Bunyikan' : 'Matikan';
 					}
 
@@ -810,12 +976,28 @@ func getInitScript(ua string) string {
 					var btnAuto = document.getElementById('wa-action-toggle-auto');
 					if (badgeAuto && btnAuto) {
 						badgeAuto.textContent = autoActive ? 'Aktif' : 'Nonaktif';
-						badgeAuto.style.background = autoActive ? 'rgba(0,168,132,0.15)' : 'rgba(255,255,255,0.06)';
-						badgeAuto.style.color = autoActive ? '#00a884' : '#8696a0';
+						badgeAuto.style.background = autoActive ? (isThemeDark ? 'rgba(0,168,132,0.15)' : 'rgba(0,128,105,0.15)') : 'transparent';
+						badgeAuto.style.color = autoActive ? accent : '#8696a0';
 						btnAuto.textContent = autoActive ? 'Matikan' : 'Aktifkan';
 					}
+
+					window.syncModalTheme(isThemeDark);
 				}
 				updateBadges();
+
+				// Hook Theme Segmented Control
+				document.getElementById('wa-theme-btn-dark').onclick = function() {
+					window.setAppTheme('dark');
+					updateBadges();
+				};
+				document.getElementById('wa-theme-btn-light').onclick = function() {
+					window.setAppTheme('light');
+					updateBadges();
+				};
+				document.getElementById('wa-theme-btn-system').onclick = function() {
+					window.setAppTheme('system');
+					updateBadges();
+				};
 
 				// Hook Click Actions
 				document.getElementById('wa-action-toggle-priv').onclick = function() {

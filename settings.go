@@ -14,6 +14,7 @@ import (
 type AppSettings struct {
 	DownloadDir      string `json:"download_dir"`
 	NotifyOnDownload bool   `json:"notify_on_download"`
+	Theme            string `json:"theme"` // "dark", "light", "system"
 }
 
 func getDefaultDownloadDir() string {
@@ -47,6 +48,7 @@ func loadSettings() *AppSettings {
 	s := &AppSettings{
 		DownloadDir:      getDefaultDownloadDir(),
 		NotifyOnDownload: true,
+		Theme:            "dark",
 	}
 	data, err := os.ReadFile(getSettingsFilePath())
 	if err != nil {
@@ -55,6 +57,9 @@ func loadSettings() *AppSettings {
 	_ = json.Unmarshal(data, s)
 	if strings.TrimSpace(s.DownloadDir) == "" {
 		s.DownloadDir = getDefaultDownloadDir()
+	}
+	if strings.TrimSpace(s.Theme) == "" {
+		s.Theme = "dark"
 	}
 	return s
 }
@@ -65,6 +70,16 @@ func saveSettings(s *AppSettings) error {
 		return err
 	}
 	return os.WriteFile(getSettingsFilePath(), data, 0644)
+}
+
+func saveTheme(theme string) string {
+	if theme != "dark" && theme != "light" && theme != "system" {
+		theme = "dark"
+	}
+	s := loadSettings()
+	s.Theme = theme
+	_ = saveSettings(s)
+	return s.Theme
 }
 
 func getUniqueFilePath(dir, filename string) string {

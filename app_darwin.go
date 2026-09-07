@@ -151,6 +151,21 @@ static WKWebView* findWKWebView(NSView* view) {
     return nil;
 }
 
+static void setNativeWindowTheme(void* nsWindowPtr, const char* themeStr) {
+    @autoreleasepool {
+        NSWindow* win = (__bridge NSWindow*)nsWindowPtr;
+        if (!win) return;
+        NSString* theme = [NSString stringWithUTF8String:themeStr];
+        if ([theme isEqualToString:@"light"]) {
+            win.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+        } else if ([theme isEqualToString:@"dark"]) {
+            win.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+        } else {
+            win.appearance = nil;
+        }
+    }
+}
+
 @interface MenuBridge : NSObject
 - (void)menuSettings:(id)sender;
 - (void)menuCheckUpdates:(id)sender;
@@ -160,6 +175,10 @@ static WKWebView* findWKWebView(NSView* view) {
 - (void)menuToggleMuteAudio:(id)sender;
 - (void)menuReloadChat:(id)sender;
 - (void)menuHardRefresh:(id)sender;
+- (void)menuShowApp:(id)sender;
+- (void)menuSetThemeDark:(id)sender;
+- (void)menuSetThemeLight:(id)sender;
+- (void)menuSetThemeSystem:(id)sender;
 @end
 
 @implementation MenuBridge
@@ -235,9 +254,127 @@ static WKWebView* findWKWebView(NSView* view) {
         }
     }
 }
+- (void)menuShowApp:(id)sender {
+    [NSApp activateIgnoringOtherApps:YES];
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        [win makeKeyAndOrderFront:nil];
+    }
+}
+- (void)menuSetThemeDark:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) [wv evaluateJavaScript:@"if (window.setAppTheme) window.setAppTheme('dark');" completionHandler:nil];
+    }
+}
+- (void)menuSetThemeLight:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) [wv evaluateJavaScript:@"if (window.setAppTheme) window.setAppTheme('light');" completionHandler:nil];
+    }
+}
+- (void)menuSetThemeSystem:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) [wv evaluateJavaScript:@"if (window.setAppTheme) window.setAppTheme('system');" completionHandler:nil];
+    }
+}
 @end
 
 static MenuBridge* g_menuBridge = nil;
+static NSStatusItem* g_statusItem = nil;
+
+static void setupStatusItem(void) {
+    @autoreleasepool {
+        if (g_statusItem) return;
+        if (!g_menuBridge) {
+            g_menuBridge = [[MenuBridge alloc] init];
+        }
+
+        NSStatusBar* statusBar = [NSStatusBar systemStatusBar];
+        g_statusItem = [statusBar statusItemWithLength:NSSquareStatusItemLength];
+
+        NSStatusBarButton* button = [g_statusItem button];
+        if (button) {
+            NSImage* icon = nil;
+            if (@available(macOS 11.0, *)) {
+                icon = [NSImage imageWithSystemSymbolName:@"message.fill" accessibilityDescription:@"WhatsApp"];
+            }
+            if (!icon) {
+                icon = [NSApp applicationIconImage];
+            }
+            if (icon) {
+                [icon setTemplate:YES];
+                [icon setSize:NSMakeSize(18, 18)];
+                [button setImage:icon];
+            }
+            [button setToolTip:@"WhatsApp Desktop"];
+        }
+
+        NSMenu* trayMenu = [[NSMenu alloc] initWithTitle:@"WhatsApp Tray"];
+
+        NSMenuItem* appTitle = [trayMenu addItemWithTitle:@"WhatsApp Desktop Light" action:nil keyEquivalent:@""];
+        [appTitle setEnabled:NO];
+
+        [trayMenu addItem:[NSMenuItem separatorItem]];
+
+        NSMenuItem* openItem = [trayMenu addItemWithTitle:@"Tampilkan Jendela" action:@selector(menuShowApp:) keyEquivalent:@""];
+        [openItem setTarget:g_menuBridge];
+
+        NSMenuItem* settingsItem = [trayMenu addItemWithTitle:@"Pusat Kontrol & Pengaturan..." action:@selector(menuSettings:) keyEquivalent:@","];
+        [settingsItem setTarget:g_menuBridge];
+
+        [trayMenu addItem:[NSMenuItem separatorItem]];
+
+        // Submenu: Tema
+        NSMenuItem* themeSubmenuItem = [[NSMenuItem alloc] initWithTitle:@"Tema Tampilan" action:nil keyEquivalent:@""];
+        NSMenu* themeMenu = [[NSMenu alloc] initWithTitle:@"Tema Tampilan"];
+        
+        NSMenuItem* mDark = [themeMenu addItemWithTitle:@"🌙 Mode Gelap (Dark)" action:@selector(menuSetThemeDark:) keyEquivalent:@""];
+        [mDark setTarget:g_menuBridge];
+
+        NSMenuItem* mLight = [themeMenu addItemWithTitle:@"☀️ Mode Terang (Light)" action:@selector(menuSetThemeLight:) keyEquivalent:@""];
+        [mLight setTarget:g_menuBridge];
+
+        NSMenuItem* mSystem = [themeMenu addItemWithTitle:@"💻 Ikuti Sistem (Auto)" action:@selector(menuSetThemeSystem:) keyEquivalent:@""];
+        [mSystem setTarget:g_menuBridge];
+
+        [themeSubmenuItem setSubmenu:themeMenu];
+        [trayMenu addItem:themeSubmenuItem];
+
+        [trayMenu addItem:[NSMenuItem separatorItem]];
+
+        NSMenuItem* privItem = [trayMenu addItemWithTitle:@"Toggle Mode Privasi" action:@selector(menuTogglePrivacy:) keyEquivalent:@""];
+        [privItem setTarget:g_menuBridge];
+
+        NSMenuItem* topItem = [trayMenu addItemWithTitle:@"Toggle Pin Jendela" action:@selector(menuToggleAlwaysOnTop:) keyEquivalent:@""];
+        [topItem setTarget:g_menuBridge];
+
+        NSMenuItem* muteItem = [trayMenu addItemWithTitle:@"Toggle Senyapkan Audio" action:@selector(menuToggleMuteAudio:) keyEquivalent:@""];
+        [muteItem setTarget:g_menuBridge];
+
+        NSMenuItem* dlItem = [trayMenu addItemWithTitle:@"Buka Folder Unduhan" action:@selector(menuOpenDownloads:) keyEquivalent:@""];
+        [dlItem setTarget:g_menuBridge];
+
+        NSMenuItem* updItem = [trayMenu addItemWithTitle:@"Periksa Pembaruan..." action:@selector(menuCheckUpdates:) keyEquivalent:@""];
+        [updItem setTarget:g_menuBridge];
+
+        [trayMenu addItem:[NSMenuItem separatorItem]];
+
+        NSMenuItem* relItem = [trayMenu addItemWithTitle:@"Muat Ulang Percakapan" action:@selector(menuReloadChat:) keyEquivalent:@""];
+        [relItem setTarget:g_menuBridge];
+
+        [trayMenu addItem:[NSMenuItem separatorItem]];
+
+        NSMenuItem* quitItem = [trayMenu addItemWithTitle:@"Keluar dari WhatsApp" action:@selector(terminate:) keyEquivalent:@"q"];
+        [trayMenu addItem:quitItem];
+
+        [g_statusItem setMenu:trayMenu];
+    }
+}
 
 static void setupMacOSMenuBar(void) {
     @autoreleasepool {
@@ -289,6 +426,20 @@ static void setupMacOSMenuBar(void) {
         // Controls Menu
         NSMenuItem* controlsMenuItem = [[NSMenuItem alloc] init];
         NSMenu* controlsMenu = [[NSMenu alloc] initWithTitle:@"Controls"];
+
+        // Submenu: Theme in Controls menu
+        NSMenuItem* themeSubItem = [[NSMenuItem alloc] initWithTitle:@"Theme / Tema" action:nil keyEquivalent:@""];
+        NSMenu* subTheme = [[NSMenu alloc] initWithTitle:@"Theme"];
+        NSMenuItem* thDark = [subTheme addItemWithTitle:@"🌙 Mode Gelap (Dark)" action:@selector(menuSetThemeDark:) keyEquivalent:@""];
+        [thDark setTarget:g_menuBridge];
+        NSMenuItem* thLight = [subTheme addItemWithTitle:@"☀️ Mode Terang (Light)" action:@selector(menuSetThemeLight:) keyEquivalent:@""];
+        [thLight setTarget:g_menuBridge];
+        NSMenuItem* thSystem = [subTheme addItemWithTitle:@"💻 Ikuti Sistem (Auto)" action:@selector(menuSetThemeSystem:) keyEquivalent:@""];
+        [thSystem setTarget:g_menuBridge];
+        [themeSubItem setSubmenu:subTheme];
+        [controlsMenu addItem:themeSubItem];
+
+        [controlsMenu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem* privItem = [controlsMenu addItemWithTitle:@"Toggle Privacy Mode" action:@selector(menuTogglePrivacy:) keyEquivalent:@"P"];
         [privItem setKeyEquivalentModifierMask:(NSEventModifierFlagShift | NSEventModifierFlagCommand)];
@@ -499,11 +650,18 @@ func runApp() {
 	}
 	defer w.Destroy()
 
-	// 1. Setup standard macOS menu bar (Cmd+C, Cmd+V, Cmd+X, Cmd+A, Cmd+Z, Cmd+Q)
+	// 1. Setup standard macOS menu bar and system status item (taskbar tray icon)
 	C.setupMacOSMenuBar()
+	C.setupStatusItem()
 
 	// 2. Configure window behavior: dark title bar, close-to-hide, and dock click reopen
 	C.configureWindowBehavior(w.Window())
+
+	// Apply configured appearance theme (dark / light / system)
+	initSettings := loadSettings()
+	cTheme := C.CString(initSettings.Theme)
+	C.setNativeWindowTheme(w.Window(), cTheme)
+	C.free(unsafe.Pointer(cTheme))
 
 	// 3. Set native WebKit customUserAgent to Google Chrome & auto-grant media capture
 	cua := C.CString(userAgent)
@@ -607,6 +765,19 @@ func runApp() {
 		s.DownloadDir = getDefaultDownloadDir()
 		_ = saveSettings(s)
 		return s.DownloadDir
+	})
+
+	_ = w.Bind("getAppThemeNative", func() string {
+		s := loadSettings()
+		return s.Theme
+	})
+
+	_ = w.Bind("setAppThemeNative", func(theme string) string {
+		saved := saveTheme(theme)
+		cstr := C.CString(saved)
+		defer C.free(unsafe.Pointer(cstr))
+		C.setNativeWindowTheme(w.Window(), cstr)
+		return saved
 	})
 
 	w.Init(getInitScript(userAgent))

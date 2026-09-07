@@ -347,6 +347,15 @@ func runApp() {
 		return s.DownloadDir
 	})
 
+	_ = w.Bind("getAppThemeNative", func() string {
+		s := loadSettings()
+		return s.Theme
+	})
+
+	_ = w.Bind("setAppThemeNative", func(theme string) string {
+		return saveTheme(theme)
+	})
+
 	w.Init(getInitScript(userAgent))
 	w.Navigate(appURL)
 
