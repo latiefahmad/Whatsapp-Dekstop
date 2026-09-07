@@ -57,6 +57,7 @@ Hasil pengujian langsung pada penggunaan normal:
 - **Auto-Start saat Booting**: Tekan `Ctrl + Shift + S` / `Cmd + Shift + S` untuk mengatur agar aplikasi otomatis terbuka saat sistem operasi dinyalakan.
 - **Reload & Hard Refresh**: Tekan `F5` / `Ctrl/Cmd + R` untuk memuat ulang obrolan, atau `Ctrl/Cmd + Shift + R` untuk hard refresh dan membersihkan cache antarmuka.
 - **In-App Auto-Updater**: Memeriksa rilis terbaru GitHub secara otomatis di latar belakang dan menyediakan pintasan manual `Ctrl/Cmd + Shift + U`. Pengguna dapat memperbarui aplikasi langsung dari jendela obrolan hanya dengan satu klik tanpa perlu mengunduh ulang file installer.
+- **Penyimpanan Unduhan Permanen & Kustom**: Berkas chat, dokumen, dan gambar disimpan secara permanen di luar aplikasi (default di folder `Downloads/WhatsApp Downloads`). Lokasi dapat diatur bebas lewat jendela Pengaturan (`Ctrl/Cmd + ,`) dengan dialog folder native dan pencegahan penimpaan file duplikat.
 - **Floating HUD Feedback**: Setiap pergantian mode pintasan menampilkan indikator notifikasi minimalis langsung di dalam antarmuka.
 - **Dukungan Media Penuh**: Mendukung perekaman voice note, pemutaran audio/video, serta akses mikrofon dan kamera untuk panggilan suara maupun video.
 - **Pencegatan Link Eksternal**: Tautan situs web di dalam chat otomatis dibuka di browser default sistem (Chrome, Edge, Safari, dll.) tanpa mengganggu jendela WhatsApp.
@@ -113,6 +114,8 @@ Hasil pengujian langsung pada penggunaan normal:
 | `Cmd + R` / `F5` | `Ctrl + R` / `F5` | Reload percakapan WhatsApp |
 | `Cmd + Shift + R` | `Ctrl + Shift + R` | Hard refresh (memuat ulang & membersihkan cache) |
 | `Cmd + Shift + U` | `Ctrl + Shift + U` | Memeriksa dan memasang pembaruan aplikasi (In-App Updater) |
+| `Cmd + ,` | `Ctrl + ,` | Membuka jendela Pengaturan (Lokasi Unduhan & Info Pintasan) |
+| `Cmd + Shift + D` | `Ctrl + Shift + D` | Membuka folder penyimpanan unduhan di Finder / File Explorer |
 | `Cmd + Shift + H` | `Ctrl + Shift + H` | Menampilkan kembali panduan fitur & pintasan |
 | `Cmd + +` / `Cmd + =` | `Ctrl + +` / `Ctrl + =` | Memperbesar ukuran tampilan (Zoom In) |
 | `Cmd + -` | `Ctrl + -` | Memperkecil ukuran tampilan (Zoom Out) |

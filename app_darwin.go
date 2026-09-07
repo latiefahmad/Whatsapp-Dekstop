@@ -415,6 +415,44 @@ func runApp() {
 		}()
 	})
 
+	// 13. Bind download and settings handlers
+	_ = w.Bind("saveDownloadedFileNative", func(filename, dataURI string) string {
+		path, err := saveDownloadedFile(filename, dataURI)
+		if err != nil {
+			return ""
+		}
+		return path
+	})
+
+	_ = w.Bind("getDownloadDirNative", func() string {
+		s := loadSettings()
+		return s.DownloadDir
+	})
+
+	_ = w.Bind("chooseDownloadDirNative", func() string {
+		selected, err := chooseFolderDialog()
+		if err != nil || selected == "" {
+			return ""
+		}
+		s := loadSettings()
+		s.DownloadDir = selected
+		_ = saveSettings(s)
+		return selected
+	})
+
+	_ = w.Bind("openDownloadDirNative", func() bool {
+		s := loadSettings()
+		_ = openFolderInFileManager(s.DownloadDir)
+		return true
+	})
+
+	_ = w.Bind("resetDownloadDirNative", func() string {
+		s := loadSettings()
+		s.DownloadDir = getDefaultDownloadDir()
+		_ = saveSettings(s)
+		return s.DownloadDir
+	})
+
 	w.Init(getInitScript(userAgent))
 	w.Navigate(appURL)
 

@@ -434,6 +434,211 @@ func getInitScript(ua string) string {
 			window.addEventListener('load', injectResponsive);
 			setInterval(injectResponsive, 2000);
 		})();
+
+		// Automatic Download Interceptor for Chat Files & Media
+		(function() {
+			function captureDownload(href, filename) {
+				if (!filename) filename = 'whatsapp_file';
+				showFloatingToast('⏳ Mengunduh: ' + filename + '...');
+
+				fetch(href)
+					.then(function(response) {
+						return response.blob();
+					})
+					.then(function(blob) {
+						var reader = new FileReader();
+						reader.onloadend = function() {
+							var base64data = reader.result;
+							if (window.saveDownloadedFileNative) {
+								window.saveDownloadedFileNative(filename, base64data).then(function(savedPath) {
+									if (savedPath) {
+										showFloatingToast('💾 Berhasil disimpan: ' + filename);
+									} else {
+										showFloatingToast('❌ Gagal menyimpan berkas.');
+									}
+								}).catch(function() {
+									showFloatingToast('❌ Error menyimpan berkas.');
+								});
+							}
+						};
+						reader.readAsDataURL(blob);
+					})
+					.catch(function(err) {
+						console.error('Download intercept fetch error:', err);
+					});
+			}
+
+			// Hook 1: Override HTMLAnchorElement.prototype.click (programmatic downloads)
+			var originalAnchorClick = HTMLAnchorElement.prototype.click;
+			HTMLAnchorElement.prototype.click = function() {
+				var downloadAttr = this.getAttribute('download');
+				var href = this.href || this.getAttribute('href');
+				if ((downloadAttr !== null || this.download) && href && (href.indexOf('blob:') === 0 || href.indexOf('data:') === 0)) {
+					var name = downloadAttr || this.download || 'whatsapp_media';
+					captureDownload(href, name);
+					return;
+				}
+				return originalAnchorClick.apply(this, arguments);
+			};
+
+			// Hook 2: User click event capturing (direct clicks on <a> with download)
+			document.addEventListener('click', function(e) {
+				var target = e.target;
+				while (target && target !== document.body) {
+					if (target.tagName === 'A') {
+						var downloadAttr = target.getAttribute('download');
+						var href = target.href || target.getAttribute('href');
+						if ((downloadAttr !== null || target.download) && href && (href.indexOf('blob:') === 0 || href.indexOf('data:') === 0)) {
+							e.preventDefault();
+							e.stopPropagation();
+							var name = downloadAttr || target.download || 'whatsapp_media';
+							captureDownload(href, name);
+							return;
+						}
+					}
+					target = target.parentElement;
+				}
+			}, true);
+		})();
+
+		// Settings Modal (Cmd/Ctrl + ,) and Download Folder Manager
+		(function() {
+			window.showSettingsModal = function() {
+				if (document.getElementById('wa-settings-overlay')) {
+					var ex = document.getElementById('wa-settings-overlay');
+					if (ex.parentNode) ex.parentNode.removeChild(ex);
+					return;
+				}
+
+				var overlay = document.createElement('div');
+				overlay.id = 'wa-settings-overlay';
+				overlay.style.cssText = 'position:fixed;inset:0;background:rgba(11,20,26,0.85);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:9999999;display:flex;align-items:center;justify-content:center;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#e9edef;animation:waModalIn 0.25s cubic-bezier(0.16,1,0.3,1);';
+
+				var modal = document.createElement('div');
+				modal.style.cssText = 'width:520px;max-width:94vw;background:#111b21;border:1px solid rgba(255,255,255,0.12);border-radius:18px;box-shadow:0 30px 80px rgba(0,0,0,0.85);padding:24px 26px 20px;box-sizing:border-box;display:flex;flex-direction:column;gap:18px;';
+
+				// Header
+				var header = document.createElement('div');
+				header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:14px;';
+				header.innerHTML = '' +
+					'<div style="display:flex;align-items:center;gap:10px;">' +
+					'  <div style="width:34px;height:34px;border-radius:10px;background:rgba(0,168,132,0.12);display:flex;align-items:center;justify-content:center;color:#00a884;">' +
+					'    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>' +
+					'  </div>' +
+					'  <div>' +
+					'    <h3 style="margin:0;font-size:16px;font-weight:600;color:#e9edef;">Pengaturan Aplikasi</h3>' +
+					'    <span style="font-size:11.5px;color:#8696a0;">Kelola lokasi berkas unduhan dan media chat</span>' +
+					'  </div>' +
+					'</div>' +
+					'<button id="wa-settings-close-x" style="background:transparent;border:none;color:#8696a0;cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:6px;">✕</button>';
+				modal.appendChild(header);
+
+				// Section: Download Folder
+				var folderSection = document.createElement('div');
+				folderSection.style.cssText = 'display:flex;flex-direction:column;gap:10px;background:rgba(32,44,51,0.5);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:14px;';
+				folderSection.innerHTML = '' +
+					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
+					'  <strong style="font-size:13px;color:#e9edef;">📁 Folder Penyimpanan Unduhan</strong>' +
+					'  <button id="wa-btn-reset-folder" style="background:transparent;border:none;color:#00a884;font-size:11.5px;cursor:pointer;padding:2px 6px;">Reset Default</button>' +
+					'</div>' +
+					'<div style="display:flex;align-items:center;background:#111b21;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:7px 10px;min-width:0;">' +
+					'  <span id="wa-folder-path" style="font-size:12px;color:#8696a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;font-family:monospace;">Memuat...</span>' +
+					'</div>' +
+					'<div style="display:flex;align-items:center;gap:8px;margin-top:2px;">' +
+					'  <button id="wa-btn-change-folder" style="flex:1;background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.12);padding:7px 12px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;transition:all 0.15s;">Ubah Lokasi Folder...</button>' +
+					'  <button id="wa-btn-open-folder" style="background:#00a884;color:#111b21;border:none;padding:7px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s;">Buka Folder</button>' +
+					'</div>';
+				modal.appendChild(folderSection);
+
+				// Section: Shortcuts Overview
+				var scSection = document.createElement('div');
+				scSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;background:rgba(32,44,51,0.3);border:1px solid rgba(255,255,255,0.04);border-radius:12px;padding:12px 14px;';
+				scSection.innerHTML = '' +
+					'<strong style="font-size:12.5px;color:#8696a0;margin-bottom:2px;">Pintasan Cepat:</strong>' +
+					'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11.5px;color:#d1d7db;">' +
+					'  <div><kbd style="background:#111b21;padding:1px 5px;border-radius:3px;border:1px solid #3b4a54;">Cmd/Ctrl + ,</kbd> Pengaturan</div>' +
+					'  <div><kbd style="background:#111b21;padding:1px 5px;border-radius:3px;border:1px solid #3b4a54;">Cmd/Ctrl + Shift + D</kbd> Buka Folder</div>' +
+					'  <div><kbd style="background:#111b21;padding:1px 5px;border-radius:3px;border:1px solid #3b4a54;">Cmd/Ctrl + Shift + P</kbd> Mode Privasi</div>' +
+					'  <div><kbd style="background:#111b21;padding:1px 5px;border-radius:3px;border:1px solid #3b4a54;">Cmd/Ctrl + Shift + T</kbd> Pin Jendela</div>' +
+					'  <div><kbd style="background:#111b21;padding:1px 5px;border-radius:3px;border:1px solid #3b4a54;">Cmd/Ctrl + Shift + M</kbd> Mute Audio</div>' +
+					'  <div><kbd style="background:#111b21;padding:1px 5px;border-radius:3px;border:1px solid #3b4a54;">Cmd/Ctrl + Shift + U</kbd> Cek Pembaruan</div>' +
+					'</div>';
+				modal.appendChild(scSection);
+
+				// Footer close button
+				var footer = document.createElement('div');
+				footer.style.cssText = 'display:flex;justify-content:flex-end;margin-top:4px;';
+				var btnDone = document.createElement('button');
+				btnDone.textContent = 'Selesai';
+				btnDone.style.cssText = 'background:#202c33;color:#e9edef;border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:7px 20px;font-size:12.5px;font-weight:600;cursor:pointer;';
+				footer.appendChild(btnDone);
+				modal.appendChild(footer);
+
+				overlay.appendChild(modal);
+				document.body.appendChild(overlay);
+
+				function closeSettings() {
+					if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+				}
+				btnDone.onclick = closeSettings;
+				document.getElementById('wa-settings-close-x').onclick = closeSettings;
+				overlay.onclick = function(e) {
+					if (e.target === overlay) closeSettings();
+				};
+
+				// Populate current download dir
+				var pathLabel = document.getElementById('wa-folder-path');
+				if (window.getDownloadDirNative) {
+					window.getDownloadDirNative().then(function(dir) {
+						if (pathLabel) pathLabel.textContent = dir;
+					});
+				}
+
+				// Change folder action
+				document.getElementById('wa-btn-change-folder').onclick = function() {
+					if (window.chooseDownloadDirNative) {
+						window.chooseDownloadDirNative().then(function(newDir) {
+							if (newDir && pathLabel) {
+								pathLabel.textContent = newDir;
+								showFloatingToast('📁 Folder unduhan berhasil diubah!');
+							}
+						});
+					}
+				};
+
+				// Open folder action
+				document.getElementById('wa-btn-open-folder').onclick = function() {
+					if (window.openDownloadDirNative) {
+						window.openDownloadDirNative();
+						showFloatingToast('📁 Membuka folder di sistem berkas...');
+					}
+				};
+
+				// Reset folder action
+				document.getElementById('wa-btn-reset-folder').onclick = function() {
+					if (window.resetDownloadDirNative) {
+						window.resetDownloadDirNative().then(function(defDir) {
+							if (pathLabel) pathLabel.textContent = defDir;
+							showFloatingToast('📁 Folder unduhan direset ke default.');
+						});
+					}
+				};
+			};
+
+			// Shortcuts: Cmd/Ctrl + , (Settings) and Cmd/Ctrl + Shift + D (Open Download Folder)
+			window.addEventListener('keydown', function(e) {
+				if ((e.metaKey || e.ctrlKey) && (e.key === ',' || e.key === '<')) {
+					e.preventDefault();
+					showSettingsModal();
+				} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'd' || e.key === 'D')) {
+					e.preventDefault();
+					if (window.openDownloadDirNative) {
+						window.openDownloadDirNative();
+						showFloatingToast('📁 Membuka folder unduhan...');
+					}
+				}
+			});
+		})();
 	` + "\n" + getOnboardingScript()
 }
 
