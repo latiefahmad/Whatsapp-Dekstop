@@ -139,14 +139,129 @@ static void setWindowFrame(void* nsWindowPtr, double x, double y, double w, doub
     }
 }
 
+static WKWebView* findWKWebView(NSView* view) {
+    if (!view) return nil;
+    if ([view isKindOfClass:[WKWebView class]]) {
+        return (WKWebView*)view;
+    }
+    for (NSView* subview in [view subviews]) {
+        WKWebView* found = findWKWebView(subview);
+        if (found) return found;
+    }
+    return nil;
+}
+
+@interface MenuBridge : NSObject
+- (void)menuSettings:(id)sender;
+- (void)menuCheckUpdates:(id)sender;
+- (void)menuOpenDownloads:(id)sender;
+- (void)menuTogglePrivacy:(id)sender;
+- (void)menuToggleAlwaysOnTop:(id)sender;
+- (void)menuToggleMuteAudio:(id)sender;
+- (void)menuReloadChat:(id)sender;
+- (void)menuHardRefresh:(id)sender;
+@end
+
+@implementation MenuBridge
+- (void)menuSettings:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) {
+            [wv evaluateJavaScript:@"if (window.showSettingsModal) window.showSettingsModal();" completionHandler:nil];
+        }
+    }
+}
+- (void)menuCheckUpdates:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) {
+            [wv evaluateJavaScript:@"if (window.triggerCheckForUpdate) window.triggerCheckForUpdate();" completionHandler:nil];
+        }
+    }
+}
+- (void)menuOpenDownloads:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) {
+            [wv evaluateJavaScript:@"if (window.openDownloadDirNative) window.openDownloadDirNative();" completionHandler:nil];
+        }
+    }
+}
+- (void)menuTogglePrivacy:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) {
+            [wv evaluateJavaScript:@"if (window.togglePrivacyMode) window.togglePrivacyMode();" completionHandler:nil];
+        }
+    }
+}
+- (void)menuToggleAlwaysOnTop:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) {
+            [wv evaluateJavaScript:@"if (window.toggleAlwaysOnTop) window.toggleAlwaysOnTop();" completionHandler:nil];
+        }
+    }
+}
+- (void)menuToggleMuteAudio:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) {
+            [wv evaluateJavaScript:@"if (window.toggleMuteAudio) window.toggleMuteAudio();" completionHandler:nil];
+        }
+    }
+}
+- (void)menuReloadChat:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) {
+            [wv evaluateJavaScript:@"window.location.reload();" completionHandler:nil];
+        }
+    }
+}
+- (void)menuHardRefresh:(id)sender {
+    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    if (win) {
+        WKWebView* wv = findWKWebView([win contentView]);
+        if (wv) {
+            [wv evaluateJavaScript:@"window.location.href = window.location.origin + window.location.pathname + '?_t=' + Date.now();" completionHandler:nil];
+        }
+    }
+}
+@end
+
+static MenuBridge* g_menuBridge = nil;
+
 static void setupMacOSMenuBar(void) {
     @autoreleasepool {
+        if (!g_menuBridge) {
+            g_menuBridge = [[MenuBridge alloc] init];
+        }
+
         NSMenu* mainMenu = [[NSMenu alloc] init];
 
         // App Menu
         NSMenuItem* appMenuItem = [[NSMenuItem alloc] init];
         NSMenu* appMenu = [[NSMenu alloc] initWithTitle:@"WhatsApp"];
         [appMenu addItemWithTitle:@"About WhatsApp Desktop" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
+        
+        NSMenuItem* settingsItem = [appMenu addItemWithTitle:@"Settings / Controls..." action:@selector(menuSettings:) keyEquivalent:@","];
+        [settingsItem setTarget:g_menuBridge];
+
+        NSMenuItem* updateItem = [appMenu addItemWithTitle:@"Check for Updates..." action:@selector(menuCheckUpdates:) keyEquivalent:@""];
+        [updateItem setTarget:g_menuBridge];
+
+        NSMenuItem* dlItem = [appMenu addItemWithTitle:@"Open Downloads Folder" action:@selector(menuOpenDownloads:) keyEquivalent:@"D"];
+        [dlItem setKeyEquivalentModifierMask:(NSEventModifierFlagShift | NSEventModifierFlagCommand)];
+        [dlItem setTarget:g_menuBridge];
+
         [appMenu addItem:[NSMenuItem separatorItem]];
         [appMenu addItemWithTitle:@"Hide WhatsApp Desktop" action:@selector(hide:) keyEquivalent:@"h"];
         NSMenuItem* hideOthers = [appMenu addItemWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
@@ -170,6 +285,47 @@ static void setupMacOSMenuBar(void) {
         [editMenu addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
         [editMenuItem setSubmenu:editMenu];
         [mainMenu addItem:editMenuItem];
+
+        // Controls Menu
+        NSMenuItem* controlsMenuItem = [[NSMenuItem alloc] init];
+        NSMenu* controlsMenu = [[NSMenu alloc] initWithTitle:@"Controls"];
+
+        NSMenuItem* privItem = [controlsMenu addItemWithTitle:@"Toggle Privacy Mode" action:@selector(menuTogglePrivacy:) keyEquivalent:@"P"];
+        [privItem setKeyEquivalentModifierMask:(NSEventModifierFlagShift | NSEventModifierFlagCommand)];
+        [privItem setTarget:g_menuBridge];
+
+        NSMenuItem* topItem = [controlsMenu addItemWithTitle:@"Toggle Always on Top" action:@selector(menuToggleAlwaysOnTop:) keyEquivalent:@"T"];
+        [topItem setKeyEquivalentModifierMask:(NSEventModifierFlagShift | NSEventModifierFlagCommand)];
+        [topItem setTarget:g_menuBridge];
+
+        NSMenuItem* muteItem = [controlsMenu addItemWithTitle:@"Toggle Audio Mute" action:@selector(menuToggleMuteAudio:) keyEquivalent:@"M"];
+        [muteItem setKeyEquivalentModifierMask:(NSEventModifierFlagShift | NSEventModifierFlagCommand)];
+        [muteItem setTarget:g_menuBridge];
+
+        [controlsMenu addItem:[NSMenuItem separatorItem]];
+
+        NSMenuItem* relItem = [controlsMenu addItemWithTitle:@"Reload Chat" action:@selector(menuReloadChat:) keyEquivalent:@"r"];
+        [relItem setTarget:g_menuBridge];
+
+        NSMenuItem* hardRelItem = [controlsMenu addItemWithTitle:@"Hard Refresh (Clear Cache)" action:@selector(menuHardRefresh:) keyEquivalent:@"R"];
+        [hardRelItem setKeyEquivalentModifierMask:(NSEventModifierFlagShift | NSEventModifierFlagCommand)];
+        [hardRelItem setTarget:g_menuBridge];
+
+        [controlsMenu addItem:[NSMenuItem separatorItem]];
+
+        NSMenuItem* menuOpenFolder = [controlsMenu addItemWithTitle:@"Open Downloads Folder" action:@selector(menuOpenDownloads:) keyEquivalent:@"D"];
+        [menuOpenFolder setKeyEquivalentModifierMask:(NSEventModifierFlagShift | NSEventModifierFlagCommand)];
+        [menuOpenFolder setTarget:g_menuBridge];
+
+        NSMenuItem* menuCheckUpdates = [controlsMenu addItemWithTitle:@"Check for Updates..." action:@selector(menuCheckUpdates:) keyEquivalent:@"U"];
+        [menuCheckUpdates setKeyEquivalentModifierMask:(NSEventModifierFlagShift | NSEventModifierFlagCommand)];
+        [menuCheckUpdates setTarget:g_menuBridge];
+
+        NSMenuItem* menuSettingsDialog = [controlsMenu addItemWithTitle:@"Settings / Control Center..." action:@selector(menuSettings:) keyEquivalent:@","];
+        [menuSettingsDialog setTarget:g_menuBridge];
+
+        [controlsMenuItem setSubmenu:controlsMenu];
+        [mainMenu addItem:controlsMenuItem];
 
         // Window Menu
         NSMenuItem* windowMenuItem = [[NSMenuItem alloc] init];
