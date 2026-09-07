@@ -199,6 +199,8 @@ func loadWindowState(dir string) *WindowState {
 	return &state
 }
 
+var lastSavedStateWin *WindowState
+
 func saveWindowState(dir string, hwnd uintptr) {
 	var r RECT
 	ret, _, _ := procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
@@ -208,6 +210,13 @@ func saveWindowState(dir string, hwnd uintptr) {
 	w := r.Right - r.Left
 	h := r.Bottom - r.Top
 	if w >= 450 && h >= 320 {
+		if lastSavedStateWin != nil &&
+			lastSavedStateWin.X == float64(r.Left) &&
+			lastSavedStateWin.Y == float64(r.Top) &&
+			lastSavedStateWin.Width == float64(w) &&
+			lastSavedStateWin.Height == float64(h) {
+			return // Position and size unchanged, avoid disk write
+		}
 		state := WindowState{
 			X:      float64(r.Left),
 			Y:      float64(r.Top),
@@ -217,6 +226,7 @@ func saveWindowState(dir string, hwnd uintptr) {
 		data, err := json.MarshalIndent(state, "", "  ")
 		if err == nil {
 			_ = os.WriteFile(filepath.Join(dir, "window_state.json"), data, 0644)
+			lastSavedStateWin = &state
 		}
 	}
 }
@@ -263,7 +273,7 @@ func runApp() {
 	}
 
 	go func() {
-		ticker := time.NewTicker(3 * time.Second)
+		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			saveWindowState(userDataDir, hwnd)
