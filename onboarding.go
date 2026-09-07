@@ -126,8 +126,8 @@ func getOnboardingScript() string {
 				btn.onclick = dismiss;
 
 				var hint = document.createElement('span');
-				hint.style.cssText = 'font-size:11.5px;color:#8696a0;';
-				hint.innerHTML = 'Hanya tampil saat instalasi pertama. Buka kembali kapan saja dengan <kbd style="background:#202c33;padding:1px 5px;border-radius:3px;border:1px solid #3b4a54;color:#e9edef;">Cmd/Ctrl + Shift + H</kbd>.';
+				hint.style.cssText = 'font-size:11.5px;color:#8696a0;text-align:center;line-height:1.6;';
+				hint.innerHTML = 'Buka panduan dengan <kbd style="background:#202c33;padding:1px 5px;border-radius:3px;border:1px solid #3b4a54;color:#e9edef;">Cmd/Ctrl + Shift + H</kbd> • Cek update dengan <kbd style="background:#202c33;padding:1px 5px;border-radius:3px;border:1px solid #3b4a54;color:#e9edef;">Cmd/Ctrl + Shift + U</kbd>';
 
 				footer.appendChild(btn);
 				footer.appendChild(hint);

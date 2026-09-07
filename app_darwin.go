@@ -400,8 +400,36 @@ func runApp() {
 		return toggleAutoStartMac()
 	})
 
+	// 11. Bind in-app auto updater
+	_ = w.Bind("checkForUpdateNative", func(manual bool) UpdateInfo {
+		info, err := checkForUpdate(appVersion)
+		if err != nil {
+			return UpdateInfo{CurrentVersion: appVersion}
+		}
+		return *info
+	})
+
+	_ = w.Bind("startUpdateNative", func(downloadURL string) {
+		go func() {
+			_ = executeUpdate(w, downloadURL)
+		}()
+	})
+
 	w.Init(getInitScript(userAgent))
 	w.Navigate(appURL)
+
+	// 12. Check for updates in the background after startup
+	go func() {
+		time.Sleep(5 * time.Second)
+		info, err := checkForUpdate(appVersion)
+		if err == nil && info != nil && info.Available {
+			w.Dispatch(func() {
+				script := fmt.Sprintf("if (window.showUpdateBanner) { window.showUpdateBanner(%q, %q, %q); }",
+					info.LatestVersion, info.ReleaseTitle, info.DownloadURL)
+				w.Eval(script)
+			})
+		}
+	}()
 
 	defer saveWindowState(userDataDir, w.Window())
 	w.Run()
