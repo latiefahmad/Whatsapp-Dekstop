@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -32,6 +33,8 @@ var (
 	procSetWindowPos  = user32.NewProc("SetWindowPos")
 	procGetWindowRect = user32.NewProc("GetWindowRect")
 	procMoveWindow    = user32.NewProc("MoveWindow")
+
+	isAlwaysOnTopWin = false
 )
 
 const (
@@ -48,12 +51,48 @@ const (
 	SWP_NOSIZE       = 0x0001
 	SWP_NOZORDER     = 0x0004
 
+	// Window Z-Order constants for Always On Top
+	HWND_TOPMOST   = ^uintptr(0) // -1
+	HWND_NOTOPMOST = ^uintptr(1) // -2
+
 	// DWM Window Attributes for Dark Theme
 	DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19
 	DWMWA_USE_IMMERSIVE_DARK_MODE             = 20
 	DWMWA_CAPTION_COLOR                       = 35
 	DWMWA_TEXT_COLOR                          = 36
 )
+
+func toggleAlwaysOnTop(hwnd uintptr) bool {
+	isAlwaysOnTopWin = !isAlwaysOnTopWin
+	target := uintptr(HWND_NOTOPMOST)
+	if isAlwaysOnTopWin {
+		target = uintptr(HWND_TOPMOST)
+	}
+	procSetWindowPos.Call(hwnd, target, 0, 0, 0, 0, uintptr(SWP_NOMOVE|SWP_NOSIZE))
+	return isAlwaysOnTopWin
+}
+
+func toggleAutoStartWindows() bool {
+	runKey := `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+	valName := "WhatsAppDesktop"
+
+	// Check if already configured
+	err := exec.Command("reg", "query", runKey, "/v", valName).Run()
+	if err == nil {
+		// Key exists, remove it
+		_ = exec.Command("reg", "delete", runKey, "/v", valName, "/f").Run()
+		return false
+	}
+
+	// Key does not exist, add it
+	execPath, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	dataVal := fmt.Sprintf("\"%s\"", execPath)
+	err = exec.Command("reg", "add", runKey, "/v", valName, "/t", "REG_SZ", "/d", dataVal, "/f").Run()
+	return err == nil
+}
 
 type RECT struct {
 	Left, Top, Right, Bottom int32
@@ -242,6 +281,16 @@ func runApp() {
 				_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL).Start()
 			}()
 		}
+	})
+
+	// Bind Always on Top toggle
+	_ = w.Bind("toggleAlwaysOnTopNative", func() bool {
+		return toggleAlwaysOnTop(hwnd)
+	})
+
+	// Bind Auto-Start toggle
+	_ = w.Bind("toggleAutoStartNative", func() bool {
+		return toggleAutoStartWindows()
 	})
 
 	w.Init(getInitScript(userAgent))

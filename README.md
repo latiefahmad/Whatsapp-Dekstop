@@ -52,6 +52,11 @@ Hasil pengujian langsung pada penggunaan normal:
 ### Fitur Lintas Platform (Windows & macOS)
 - **Sesi Login Persisten**: Data sesi (cookies, local storage, indexedDB) tersimpan di direktori profil khusus, sehingga tidak perlu melakukan scan QR code berulang kali setiap membuka aplikasi.
 - **Mode Privasi (Anti-Intip)**: Tekan `Ctrl + Shift + P` (Windows) atau `Cmd + Shift + P` (macOS) untuk menyamarkan (*blur*) pesan, gambar, dan nama kontak. Arahkan kursor mouse ke pesan untuk membacanya sementara.
+- **Always on Top (Pin Window)**: Tekan `Ctrl + Shift + T` / `Cmd + Shift + T` untuk menyematkan jendela WhatsApp agar selalu berada di barisan terdepan layar saat multitasking.
+- **Mute Audio Cepat**: Tekan `Ctrl + Shift + M` / `Cmd + Shift + M` untuk mematikan atau membunyikan kembali audio notifikasi seketika.
+- **Auto-Start saat Booting**: Tekan `Ctrl + Shift + S` / `Cmd + Shift + S` untuk mengatur agar aplikasi otomatis terbuka saat sistem operasi dinyalakan.
+- **Reload & Hard Refresh**: Tekan `F5` / `Ctrl/Cmd + R` untuk memuat ulang obrolan, atau `Ctrl/Cmd + Shift + R` untuk hard refresh dan membersihkan cache antarmuka.
+- **Floating HUD Feedback**: Setiap pergantian mode pintasan menampilkan indikator notifikasi minimalis langsung di dalam antarmuka.
 - **Dukungan Media Penuh**: Mendukung perekaman voice note, pemutaran audio/video, serta akses mikrofon dan kamera untuk panggilan suara maupun video.
 - **Pencegatan Link Eksternal**: Tautan situs web di dalam chat otomatis dibuka di browser default sistem (Chrome, Edge, Safari, dll.) tanpa mengganggu jendela WhatsApp.
 - **Kontrol Zoom Tampilan**: Sesuaikan ukuran teks dan antarmuka dengan shortcut `Ctrl/Cmd +`, `Ctrl/Cmd -`, dan `Ctrl/Cmd 0`.
@@ -100,12 +105,18 @@ Hasil pengujian langsung pada penggunaan normal:
 
 | macOS | Windows | Fungsi |
 | :--- | :--- | :--- |
-| `Cmd + Shift + P` | `Ctrl + Shift + P` | Mengaktifkan/menonaktifkan Mode Privasi (blur pesan) |
+| `Cmd + Shift + P` | `Ctrl + Shift + P` | Toggle Mode Privasi (blur pesan & media di tempat umum) |
+| `Cmd + Shift + T` | `Ctrl + Shift + T` | Toggle Always on Top (pin jendela agar selalu di barisan depan) |
+| `Cmd + Shift + M` | `Ctrl + Shift + M` | Toggle Mute audio notifikasi obrolan |
+| `Cmd + Shift + S` | `Ctrl + Shift + S` | Toggle buka otomatis saat komputer menyala (Auto-Start) |
+| `Cmd + R` / `F5` | `Ctrl + R` / `F5` | Reload percakapan WhatsApp |
+| `Cmd + Shift + R` | `Ctrl + Shift + R` | Hard refresh (memuat ulang & membersihkan cache) |
+| `Cmd + Shift + H` | `Ctrl + Shift + H` | Menampilkan kembali panduan fitur & pintasan |
 | `Cmd + +` / `Cmd + =` | `Ctrl + +` / `Ctrl + =` | Memperbesar ukuran tampilan (Zoom In) |
 | `Cmd + -` | `Ctrl + -` | Memperkecil ukuran tampilan (Zoom Out) |
 | `Cmd + 0` | `Ctrl + 0` | Mengembalikan ukuran tampilan ke default (100%) |
-| `Cmd + C` / `Cmd + V` | `Ctrl + C` / `Ctrl + V` | Menyalin / menempel teks atau gambar |
-| `Cmd + W` | `Alt + F4` | Menyembunyikan jendela (aplikasi tetap aktif) |
+| `Cmd + C` / `Cmd + V` | `Ctrl + C` / `Ctrl + V` | Menyalin / menempel teks atau media |
+| `Cmd + W` | `Alt + F4` | Menyembunyikan jendela ke background (aplikasi tetap aktif) |
 | `Cmd + Q` | `Alt + F4` | Menutup aplikasi secara penuh |
 
 ---

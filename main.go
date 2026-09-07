@@ -171,13 +171,31 @@ func getInitScript(ua string) string {
 			}
 		})();
 
+		// Floating HUD Toast for User Feedback
+		function showFloatingToast(msg) {
+			var toast = document.getElementById('wa-hud-toast');
+			if (!toast) {
+				toast = document.createElement('div');
+				toast.id = 'wa-hud-toast';
+				toast.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);background:rgba(32,44,51,0.94);backdrop-filter:blur(10px);color:#00a884;border:1px solid rgba(0,168,132,0.4);border-radius:20px;padding:8px 20px;font-size:12.5px;font-weight:600;z-index:9999999;box-shadow:0 8px 24px rgba(0,0,0,0.6);pointer-events:none;transition:all 0.22s cubic-bezier(0.16,1,0.3,1);opacity:0;';
+				document.body.appendChild(toast);
+			}
+			toast.textContent = msg;
+			toast.style.opacity = '1';
+			toast.style.transform = 'translateX(-50%) translateY(4px)';
+			clearTimeout(toast._timer);
+			toast._timer = setTimeout(function() {
+				toast.style.opacity = '0';
+				toast.style.transform = 'translateX(-50%) translateY(0)';
+			}, 2000);
+		}
+
 		// Privacy Mode Toggle (Cmd + Shift + P)
 		(function() {
 			var isPrivacyActive = false;
 			var styleEl = document.createElement('style');
 			styleEl.id = 'whatsapp-privacy-style';
 			styleEl.textContent = '.privacy-mode #main .copyable-text, .privacy-mode #main img, .privacy-mode #main video, .privacy-mode #pane-side span[title] { filter: blur(8px) !important; transition: filter 0.15s ease-in-out; } .privacy-mode #main .copyable-text:hover, .privacy-mode #main img:hover, .privacy-mode #main video:hover, .privacy-mode #pane-side span[title]:hover { filter: none !important; }';
-
 
 			window.addEventListener('keydown', function(e) {
 				if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'p' || e.key === 'P')) {
@@ -188,12 +206,73 @@ func getInitScript(ua string) string {
 							document.head.appendChild(styleEl);
 						}
 						document.body.classList.add('privacy-mode');
+						showFloatingToast('🔒 Mode Privasi: Aktif');
 					} else {
 						document.body.classList.remove('privacy-mode');
+						showFloatingToast('🔓 Mode Privasi: Nonaktif');
 					}
 				}
 			});
 		})();
+
+		// Always on Top Toggle (Cmd/Ctrl + Shift + T)
+		window.addEventListener('keydown', function(e) {
+			if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 't' || e.key === 'T')) {
+				e.preventDefault();
+				if (window.toggleAlwaysOnTopNative) {
+					window.toggleAlwaysOnTopNative().then(function(isPinned) {
+						showFloatingToast(isPinned ? '📌 Always on Top: Aktif' : '📌 Always on Top: Nonaktif');
+					});
+				}
+			}
+		});
+
+		// Reload and Refresh Shortcuts (Cmd/Ctrl + R, Cmd/Ctrl + Shift + R, F5)
+		window.addEventListener('keydown', function(e) {
+			if (e.key === 'F5' || ((e.metaKey || e.ctrlKey) && (e.key === 'r' || e.key === 'R') && !e.shiftKey && !e.altKey)) {
+				e.preventDefault();
+				showFloatingToast('🔄 Memuat ulang percakapan...');
+				setTimeout(function() { window.location.reload(); }, 200);
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+				e.preventDefault();
+				showFloatingToast('⚡ Hard refresh (membersihkan cache)...');
+				setTimeout(function() {
+					window.location.href = window.location.origin + window.location.pathname + '?_t=' + Date.now();
+				}, 200);
+			}
+		});
+
+		// Audio Mute Toggle (Cmd/Ctrl + Shift + M)
+		(function() {
+			var isMuted = false;
+			window.addEventListener('keydown', function(e) {
+				if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'm' || e.key === 'M')) {
+					e.preventDefault();
+					isMuted = !isMuted;
+					document.querySelectorAll('audio, video').forEach(function(el) {
+						el.muted = isMuted;
+					});
+					showFloatingToast(isMuted ? '🔇 Audio Notifikasi: Dimatikan' : '🔊 Audio Notifikasi: Diaktifkan');
+				}
+			});
+			document.addEventListener('play', function(e) {
+				if (isMuted && e.target && (e.target.tagName === 'AUDIO' || e.target.tagName === 'VIDEO')) {
+					e.target.muted = true;
+				}
+			}, true);
+		})();
+
+		// Auto-Start at Login Toggle (Cmd/Ctrl + Shift + S)
+		window.addEventListener('keydown', function(e) {
+			if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S')) {
+				e.preventDefault();
+				if (window.toggleAutoStartNative) {
+					window.toggleAutoStartNative().then(function(isEnabled) {
+						showFloatingToast(isEnabled ? '🚀 Buka Otomatis saat Boot: Aktif' : '🚀 Buka Otomatis saat Boot: Nonaktif');
+					});
+				}
+			}
+		});
 
 		// Dynamic Responsive Desktop Layout (enables seamless shrinking and expanding)
 		(function() {

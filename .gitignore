@@ -1,6 +1,6 @@
 WhatsApp.exe
 WhatsApp.exe~
-WhatsApp_mac
+WhatsApp_*
 *.app
 *.icns
 *.dmg
@@ -11,3 +11,4 @@ WhatsApp_mac
 config_private.go
 build_mac.sh
 dmg_background.png
+whatsapp-desktop

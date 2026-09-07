@@ -98,6 +98,21 @@ static void configureWindowBehavior(void* nsWindowPtr) {
     }
 }
 
+static BOOL g_isAlwaysOnTop = NO;
+
+static BOOL toggleAlwaysOnTop(void* nsWindowPtr) {
+    @autoreleasepool {
+        NSWindow* win = (__bridge NSWindow*)nsWindowPtr;
+        g_isAlwaysOnTop = !g_isAlwaysOnTop;
+        if (g_isAlwaysOnTop) {
+            [win setLevel:NSFloatingWindowLevel];
+        } else {
+            [win setLevel:NSNormalWindowLevel];
+        }
+        return g_isAlwaysOnTop;
+    }
+}
+
 static void setDockBadge(const char* labelStr) {
     @autoreleasepool {
         NSString* label = (labelStr && strlen(labelStr) > 0) ? [NSString stringWithUTF8String:labelStr] : nil;
@@ -250,6 +265,62 @@ func checkSingleInstance() (*os.File, bool) {
 	return file, true
 }
 
+func getAppBundlePath() string {
+	execPath, err := os.Executable()
+	if err != nil {
+		return "/Applications/WhatsApp Web.app"
+	}
+	if idx := strings.Index(execPath, ".app"); idx != -1 {
+		return execPath[:idx+4]
+	}
+	if _, err := os.Stat("/Applications/WhatsApp Web.app"); err == nil {
+		return "/Applications/WhatsApp Web.app"
+	}
+	return execPath
+}
+
+func getLaunchAgentPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "Library", "LaunchAgents", "com.whatsapp.desktoplight.plist")
+}
+
+func toggleAutoStartMac() bool {
+	plistPath := getLaunchAgentPath()
+	if plistPath == "" {
+		return false
+	}
+	if _, err := os.Stat(plistPath); err == nil {
+		_ = os.Remove(plistPath)
+		return false
+	}
+
+	appPath := getAppBundlePath()
+	plistContent := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.whatsapp.desktoplight</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>%s</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>`, appPath)
+
+	_ = os.MkdirAll(filepath.Dir(plistPath), 0755)
+	if err := os.WriteFile(plistPath, []byte(plistContent), 0644); err != nil {
+		return false
+	}
+	return true
+}
+
 func showNativeNotification(title, message string) {
 	script := fmt.Sprintf(`display notification %q with title %q`, message, title)
 	_ = exec.Command("osascript", "-e", script).Run()
@@ -317,6 +388,16 @@ func runApp() {
 		cstr := C.CString(badge)
 		defer C.free(unsafe.Pointer(cstr))
 		C.setDockBadge(cstr)
+	})
+
+	// 9. Bind Always on Top toggle
+	_ = w.Bind("toggleAlwaysOnTopNative", func() bool {
+		return bool(C.toggleAlwaysOnTop(w.Window()))
+	})
+
+	// 10. Bind Auto-Start toggle
+	_ = w.Bind("toggleAutoStartNative", func() bool {
+		return toggleAutoStartMac()
 	})
 
 	w.Init(getInitScript(userAgent))

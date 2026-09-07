@@ -66,30 +66,40 @@ func getOnboardingScript() string {
 					{
 						iconSvg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>',
 						title: 'Mode Privasi (Anti-Intip)',
-						desc: 'Tekan <kbd style="background:#111b21;padding:2px 5px;border-radius:4px;font-size:11px;border:1px solid #3b4a54;color:#e9edef;">Cmd/Ctrl+Shift+P</kbd> untuk blur pesan di tempat umum.'
+						desc: '<kbd style="background:#111b21;padding:1px 5px;border-radius:4px;font-size:10.5px;border:1px solid #3b4a54;color:#e9edef;">Cmd/Ctrl+Shift+P</kbd> untuk blur pesan di tempat umum.'
 					},
 					{
-						iconSvg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>',
-						title: 'Jendela Bebas Diatur',
-						desc: 'Bebas diperkecil/diperbesar. Shortcut zoom tampilan dengan <kbd style="background:#111b21;padding:2px 5px;border-radius:4px;font-size:11px;border:1px solid #3b4a54;color:#e9edef;">Cmd/Ctrl +</kbd> & <kbd style="background:#111b21;padding:2px 5px;border-radius:4px;font-size:11px;border:1px solid #3b4a54;color:#e9edef;">-</kbd>.'
+						iconSvg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>',
+						title: 'Pin / Always on Top',
+						desc: '<kbd style="background:#111b21;padding:1px 5px;border-radius:4px;font-size:10.5px;border:1px solid #3b4a54;color:#e9edef;">Cmd/Ctrl+Shift+T</kbd> agar jendela tetap di paling depan.'
 					},
 					{
-						iconSvg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>',
-						title: 'Tautan Luar Terisolasi',
-						desc: 'Tautan web di dalam chat dibuka di browser utama sistem Anda tanpa mengganggu sesi.'
+						iconSvg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>',
+						title: 'Mute Notifikasi Suara',
+						desc: '<kbd style="background:#111b21;padding:1px 5px;border-radius:4px;font-size:10.5px;border:1px solid #3b4a54;color:#e9edef;">Cmd/Ctrl+Shift+M</kbd> untuk mematikan audio seketika.'
+					},
+					{
+						iconSvg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>',
+						title: 'Reload & Hard Refresh',
+						desc: '<kbd style="background:#111b21;padding:1px 5px;border-radius:4px;font-size:10.5px;border:1px solid #3b4a54;color:#e9edef;">F5 / Cmd+R</kbd> reload, <kbd style="background:#111b21;padding:1px 5px;border-radius:4px;font-size:10.5px;border:1px solid #3b4a54;color:#e9edef;">Shift+R</kbd> hard refresh.'
+					},
+					{
+						iconSvg: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>',
+						title: 'Buka Otomatis saat Boot',
+						desc: '<kbd style="background:#111b21;padding:1px 5px;border-radius:4px;font-size:10.5px;border:1px solid #3b4a54;color:#e9edef;">Cmd/Ctrl+Shift+S</kbd> toggle start otomatis saat startup.'
 					}
 				];
 
 				items.forEach(function(it) {
 					var c = document.createElement('div');
 					c.className = 'wa-feat-card';
-					c.style.cssText = 'border-radius:12px;padding:14px;';
+					c.style.cssText = 'border-radius:12px;padding:12px;';
 					c.innerHTML = '' +
 						'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">' +
-						'  <div style="width:28px;height:28px;border-radius:8px;background:rgba(0,168,132,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + it.iconSvg + '</div>' +
-						'  <strong style="font-size:13px;font-weight:600;color:#e9edef;">' + it.title + '</strong>' +
+						'  <div style="width:26px;height:26px;border-radius:7px;background:rgba(0,168,132,0.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + it.iconSvg + '</div>' +
+						'  <strong style="font-size:12.5px;font-weight:600;color:#e9edef;">' + it.title + '</strong>' +
 						'</div>' +
-						'<p style="margin:0;font-size:12px;color:#8696a0;line-height:1.45;">' + it.desc + '</p>';
+						'<p style="margin:0;font-size:11.5px;color:#8696a0;line-height:1.4;">' + it.desc + '</p>';
 					grid.appendChild(c);
 				});
 				modal.appendChild(grid);
