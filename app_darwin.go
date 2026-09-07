@@ -57,6 +57,21 @@ static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) 
             NSString* ua = [NSString stringWithUTF8String:uaStr];
             [wv setCustomUserAgent:ua];
 
+            // Enable GPU-accelerated drawing & asynchronous layer rendering
+            [wv setWantsLayer:YES];
+            if (wv.layer) {
+                [wv.layer setDrawsAsynchronously:YES];
+            }
+
+            // Enable WebGL and hardware accelerated drawing
+            @try {
+                WKPreferences* prefs = [wv.configuration preferences];
+                [prefs setValue:@YES forKey:@"acceleratedDrawingEnabled"];
+                [prefs setValue:@YES forKey:@"canvasUsesAcceleratedDrawing"];
+                [prefs setValue:@YES forKey:@"webGLEnabled"];
+                [prefs setValue:@NO forKey:@"developerExtrasEnabled"];
+            } @catch (NSException *exception) {}
+
             g_uiDelegate = [[WhatsAppUIDelegate alloc] init];
             [wv setUIDelegate:g_uiDelegate];
         }
@@ -513,7 +528,7 @@ func getUserDataDir() string {
 	if err != nil {
 		home = "."
 	}
-	dir := filepath.Join(home, "Library", "Application Support", "WhatsAppDesktopLight", "UserData")
+	dir := filepath.Join(home, "Library", "Application Support", "WhatsAppDesk", "UserData")
 	_ = os.MkdirAll(dir, 0755)
 	return dir
 }
@@ -534,6 +549,8 @@ func loadWindowState(dir string) *WindowState {
 	return &state
 }
 
+var lastSavedState *WindowState
+
 func saveWindowState(dir string, win unsafe.Pointer) {
 	if win == nil {
 		return
@@ -541,6 +558,13 @@ func saveWindowState(dir string, win unsafe.Pointer) {
 	var x, y, w, h C.double
 	C.getWindowFrame(win, &x, &y, &w, &h)
 	if w >= 450 && h >= 320 {
+		if lastSavedState != nil &&
+			lastSavedState.X == float64(x) &&
+			lastSavedState.Y == float64(y) &&
+			lastSavedState.Width == float64(w) &&
+			lastSavedState.Height == float64(h) {
+			return // Avoid writing to disk if position and size have not changed!
+		}
 		state := WindowState{
 			X:      float64(x),
 			Y:      float64(y),
@@ -550,6 +574,7 @@ func saveWindowState(dir string, win unsafe.Pointer) {
 		data, err := json.MarshalIndent(state, "", "  ")
 		if err == nil {
 			_ = os.WriteFile(filepath.Join(dir, "window_state.json"), data, 0644)
+			lastSavedState = &state
 		}
 	}
 }
@@ -675,7 +700,7 @@ func runApp() {
 
 	// 5. Save window state periodically
 	go func() {
-		ticker := time.NewTicker(3 * time.Second)
+		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			saveWindowState(userDataDir, w.Window())

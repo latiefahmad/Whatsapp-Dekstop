@@ -475,10 +475,10 @@ func getInitScript(ua string) string {
 			var respStyle = document.createElement('style');
 			respStyle.id = 'whatsapp-desktop-responsive';
 			respStyle.textContent = '' +
-				'html, body, #app { width: 100% !important; height: 100% !important; min-width: 0 !important; overflow: hidden !important; }' +
+				'html, body, #app { width: 100% !important; height: 100% !important; min-width: 0 !important; overflow: hidden !important; -webkit-font-smoothing: antialiased; }' +
 				'#app > div, #app .two { width: 100% !important; height: 100% !important; min-width: 0 !important; max-width: 100% !important; top: 0 !important; margin: 0 !important; border-radius: 0 !important; }' +
-				'#pane-side, div[data-testid="chat-list"] { min-width: 200px !important; }' +
-				'#main { min-width: 240px !important; }';
+				'#pane-side, div[data-testid="chat-list"] { min-width: 200px !important; -webkit-overflow-scrolling: touch !important; }' +
+				'#main { min-width: 240px !important; -webkit-overflow-scrolling: touch !important; }';
 
 			var respTimer = null;
 			function injectResponsive() {
