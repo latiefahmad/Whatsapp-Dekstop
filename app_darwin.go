@@ -563,7 +563,7 @@ func checkSingleInstance() (*os.File, bool) {
 	}
 	err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if err != nil {
-		_ = exec.Command("osascript", "-e", `tell application "WhatsApp" to activate`).Run()
+		_ = exec.Command("osascript", "-e", `tell application "WhatsApp Desktop Light" to activate`).Run()
 		return nil, false
 	}
 	return file, true
@@ -572,13 +572,13 @@ func checkSingleInstance() (*os.File, bool) {
 func getAppBundlePath() string {
 	execPath, err := os.Executable()
 	if err != nil {
-		return "/Applications/WhatsApp Web.app"
+		return "/Applications/WhatsApp Desktop Light.app"
 	}
 	if idx := strings.Index(execPath, ".app"); idx != -1 {
 		return execPath[:idx+4]
 	}
-	if _, err := os.Stat("/Applications/WhatsApp Web.app"); err == nil {
-		return "/Applications/WhatsApp Web.app"
+	if _, err := os.Stat("/Applications/WhatsApp Desktop Light.app"); err == nil {
+		return "/Applications/WhatsApp Desktop Light.app"
 	}
 	return execPath
 }

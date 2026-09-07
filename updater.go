@@ -93,6 +93,13 @@ func findAssetForCurrentOS(release *GitHubRelease) *GitHubAsset {
 				return &a
 			}
 		}
+	} else if runtime.GOOS == "linux" {
+		for _, a := range release.Assets {
+			name := strings.ToLower(a.Name)
+			if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".deb") || (strings.Contains(name, "linux") && !strings.HasSuffix(name, ".zip")) {
+				return &a
+			}
+		}
 	}
 	return nil
 }

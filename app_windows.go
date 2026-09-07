@@ -74,7 +74,7 @@ func toggleAlwaysOnTop(hwnd uintptr) bool {
 
 func toggleAutoStartWindows() bool {
 	runKey := `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
-	valName := "WhatsAppDesktop"
+	valName := "WhatsAppDesktopLight"
 
 	// Check if already configured
 	err := exec.Command("reg", "query", runKey, "/v", valName).Run()
@@ -164,7 +164,7 @@ func getUserDataDir() string {
 
 func showNativeNotification(title, message, iconPath string) {
 	notification := toast.Notification{
-		AppID:   "WhatsApp Desktop",
+		AppID:   "WhatsApp Desktop Light",
 		Title:   title,
 		Message: message,
 		Icon:    iconPath,
