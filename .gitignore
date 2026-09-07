@@ -5,7 +5,7 @@ WhatsApp.exe~
 WhatsApp_*
 icon_1024.png
 *.app
-*.icns
+!AppIcon.icns
 *.dmg
 *.zip
 *.tmp
