@@ -172,6 +172,17 @@ func getInitScript(ua string) string {
 			}
 		})();
 
+		// Memory Optimization: Idle Garbage Collection
+		(function() {
+			if (typeof window.gc === 'function') {
+				setInterval(function() {
+					if (document.hidden) {
+						window.gc();
+					}
+				}, 60000);
+			}
+		})();
+
 		// Floating HUD Toast for User Feedback
 		function showFloatingToast(msg) {
 			var toast = document.getElementById('wa-hud-toast');

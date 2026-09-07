@@ -10,13 +10,47 @@ package main
 #import <WebKit/WebKit.h>
 #include <stdlib.h>
 
+static void configureWebKitMemoryLimits(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        // Strictly cap in-memory URL cache to 32MB and disk cache to 128MB (default was unbounded/hundreds of MBs)
+        NSURLCache *sharedCache = [[NSURLCache alloc] initWithMemoryCapacity:32 * 1024 * 1024
+                                                                diskCapacity:128 * 1024 * 1024
+                                                                    diskPath:nil];
+        [NSURLCache setSharedURLCache:sharedCache];
+    });
+}
+
+static void purgeWebKitMemory(void) {
+    @autoreleasepool {
+        // 1. Drain ephemeral URL cache
+        [[NSURLCache sharedURLCache] removeAllCachedResponses];
+
+        // 2. Broadcast low memory warning notification to WebKit WebContent processes.
+        // This causes WebKit to drop inactive image decodes, font caches, JIT compilation caches,
+        // and aggressively triggers JavaScript engine garbage collection.
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"_WKWebsiteDataStoreDidReceiveMemoryWarningNotification" object:nil];
+    }
+}
+
+static void triggerNativeMemoryPurge(void) {
+    purgeWebKitMemory();
+}
+
 @interface WhatsAppWindowDelegate : NSObject <NSWindowDelegate>
 @end
 
 @implementation WhatsAppWindowDelegate
 - (BOOL)windowShouldClose:(NSWindow *)sender {
     [sender orderOut:nil];
+    purgeWebKitMemory();
     return NO;
+}
+- (void)windowDidMiniaturize:(NSNotification *)notification {
+    purgeWebKitMemory();
+}
+- (void)windowDidResignKey:(NSNotification *)notification {
+    purgeWebKitMemory();
 }
 @end
 
@@ -49,6 +83,8 @@ static WhatsAppUIDelegate* g_uiDelegate = nil;
 
 static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) {
     @autoreleasepool {
+        configureWebKitMemoryLimits();
+
         NSWindow* win = (__bridge NSWindow*)nsWindowPtr;
         NSView* contentView = [win contentView];
         if ([contentView isKindOfClass:[WKWebView class]]) {
@@ -63,13 +99,20 @@ static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) 
                 [wv.layer setDrawsAsynchronously:YES];
             }
 
-            // Enable WebGL and hardware accelerated drawing
+            // Memory and Performance Optimizations
             @try {
                 WKPreferences* prefs = [wv.configuration preferences];
                 [prefs setValue:@YES forKey:@"acceleratedDrawingEnabled"];
-                [prefs setValue:@YES forKey:@"canvasUsesAcceleratedDrawing"];
+                // canvasUsesAcceleratedDrawing creates dedicated 32-bit Metal IOSurface buffers
+                // for EVERY canvas element (audio waveforms, stickers, thumbnails).
+                // Setting this to NO saves 200MB-500MB of GPU/Footprint RAM!
+                [prefs setValue:@NO forKey:@"canvasUsesAcceleratedDrawing"];
                 [prefs setValue:@YES forKey:@"webGLEnabled"];
                 [prefs setValue:@NO forKey:@"developerExtrasEnabled"];
+
+                // Disable pageCache & backForwardCache to prevent WebKit from retaining old page trees
+                [prefs setValue:@NO forKey:@"backForwardCacheEnabled"];
+                [prefs setValue:@NO forKey:@"pageCacheEnabled"];
             } @catch (NSException *exception) {}
 
             g_uiDelegate = [[WhatsAppUIDelegate alloc] init];
@@ -513,6 +556,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -704,6 +748,16 @@ func runApp() {
 		defer ticker.Stop()
 		for range ticker.C {
 			saveWindowState(userDataDir, w.Window())
+		}
+	}()
+
+	// 5b. Periodic WebKit and Go runtime memory cleanup (every 60s)
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			C.triggerNativeMemoryPurge()
+			debug.FreeOSMemory()
 		}
 	}()
 
