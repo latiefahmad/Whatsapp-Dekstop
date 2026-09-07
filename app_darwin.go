@@ -316,7 +316,7 @@ static void setupStatusItem(void) {
 
         NSMenu* trayMenu = [[NSMenu alloc] initWithTitle:@"WhatsApp Tray"];
 
-        NSMenuItem* appTitle = [trayMenu addItemWithTitle:@"WhatsApp Desktop Light" action:nil keyEquivalent:@""];
+        NSMenuItem* appTitle = [trayMenu addItemWithTitle:@"WhatsApp Desk" action:nil keyEquivalent:@""];
         [appTitle setEnabled:NO];
 
         [trayMenu addItem:[NSMenuItem separatorItem]];
@@ -563,7 +563,7 @@ func checkSingleInstance() (*os.File, bool) {
 	}
 	err = syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if err != nil {
-		_ = exec.Command("osascript", "-e", `tell application "WhatsApp Desktop Light" to activate`).Run()
+		_ = exec.Command("osascript", "-e", `tell application "WhatsApp Desk" to activate`).Run()
 		return nil, false
 	}
 	return file, true
@@ -572,13 +572,13 @@ func checkSingleInstance() (*os.File, bool) {
 func getAppBundlePath() string {
 	execPath, err := os.Executable()
 	if err != nil {
-		return "/Applications/WhatsApp Desktop Light.app"
+		return "/Applications/WhatsApp Desk.app"
 	}
 	if idx := strings.Index(execPath, ".app"); idx != -1 {
 		return execPath[:idx+4]
 	}
-	if _, err := os.Stat("/Applications/WhatsApp Desktop Light.app"); err == nil {
-		return "/Applications/WhatsApp Desktop Light.app"
+	if _, err := os.Stat("/Applications/WhatsApp Desk.app"); err == nil {
+		return "/Applications/WhatsApp Desk.app"
 	}
 	return execPath
 }
@@ -588,7 +588,7 @@ func getLaunchAgentPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, "Library", "LaunchAgents", "com.whatsapp.desktoplight.plist")
+	return filepath.Join(home, "Library", "LaunchAgents", "com.whatsapp.desk.plist")
 }
 
 func toggleAutoStartMac() bool {
@@ -607,7 +607,7 @@ func toggleAutoStartMac() bool {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.whatsapp.desktoplight</string>
+    <string>com.whatsapp.desk</string>
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/open</string>

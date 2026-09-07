@@ -45,13 +45,13 @@ func getUserDataDir() string {
 		home, _ := os.UserHomeDir()
 		configDir = filepath.Join(home, ".config")
 	}
-	dir := filepath.Join(configDir, "WhatsAppDesktopLight")
+	dir := filepath.Join(configDir, "WhatsAppDesk")
 	_ = os.MkdirAll(dir, 0755)
 	return dir
 }
 
 func showNativeNotification(title, message string) {
-	_ = exec.Command("notify-send", "-a", "WhatsApp Desktop Light", title, message).Run()
+	_ = exec.Command("notify-send", "-a", "WhatsApp Desk", title, message).Run()
 }
 
 func toggleAlwaysOnTopLinux() bool {
@@ -71,7 +71,7 @@ func getAutoStartDesktopPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".config", "autostart", "whatsapp-desktop-light.desktop")
+	return filepath.Join(home, ".config", "autostart", "whatsapp-desk.desktop")
 }
 
 func toggleAutoStartLinux() bool {
@@ -93,10 +93,10 @@ func toggleAutoStartLinux() bool {
 	desktopContent := fmt.Sprintf(`[Desktop Entry]
 Type=Application
 Version=1.0
-Name=WhatsApp Desktop Light
+Name=WhatsApp Desk
 Comment=Lightweight WhatsApp Desktop Client
 Exec=%s
-Icon=whatsapp-desktop-light
+Icon=whatsapp-desk
 Terminal=false
 Categories=Network;InstantMessaging;
 StartupNotify=true
@@ -138,7 +138,7 @@ func saveWindowState(dir string, width, height int) {
 func runApp() {
 	_, isSingle := checkSingleInstance()
 	if !isSingle {
-		fmt.Println("WhatsApp Desktop Light is already running.")
+		fmt.Println("WhatsApp Desk is already running.")
 		os.Exit(0)
 	}
 

@@ -75,7 +75,7 @@ func applyUpdateLinux(downloadedFile string) error {
 		// Find binary in extracted directory
 		entries, _ := os.ReadDir(extractDir)
 		for _, e := range entries {
-			if !e.IsDir() && (strings.Contains(strings.ToLower(e.Name()), "whatsapp") || e.Name() == "whatsapp-desktop-light") {
+			if !e.IsDir() && (strings.Contains(strings.ToLower(e.Name()), "whatsapp") || e.Name() == "whatsapp-desk" || e.Name() == "whatsapp-desktop-light") {
 				newBinaryPath = filepath.Join(extractDir, e.Name())
 				break
 			}

@@ -87,8 +87,11 @@ func applyUpdateDarwin(zipPath string) error {
 		return fmt.Errorf("unzip failed: %w", err)
 	}
 
-	// Look for WhatsApp Desktop Light.app inside extracted dir
-	newAppPath := filepath.Join(extractDir, "WhatsApp Desktop Light.app")
+	// Look for WhatsApp Desk.app inside extracted dir
+	newAppPath := filepath.Join(extractDir, "WhatsApp Desk.app")
+	if _, err := os.Stat(newAppPath); err != nil {
+		newAppPath = filepath.Join(extractDir, "WhatsApp Desktop Light.app")
+	}
 	if _, err := os.Stat(newAppPath); err != nil {
 		newAppPath = filepath.Join(extractDir, "WhatsApp.app")
 	}

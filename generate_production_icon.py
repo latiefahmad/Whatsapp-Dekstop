@@ -107,8 +107,8 @@ def build_icon():
     if not os.path.exists(font_path):
         font_path = "/System/Library/Fonts/SFNS.ttf"
     
-    font = ImageFont.truetype(font_path, 21)
-    text = "DESKTOP LIGHT"
+    font = ImageFont.truetype(font_path, 20)
+    text = "WHATSAPP DESK"
     # Measure text
     bbox = font.getbbox(text)
     tw = bbox[2] - bbox[0]

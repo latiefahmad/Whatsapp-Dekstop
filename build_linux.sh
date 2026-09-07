@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-APP_NAME="whatsapp-desktop-light"
-DISPLAY_NAME="WhatsApp Desktop Light"
+APP_NAME="whatsapp-desk"
+DISPLAY_NAME="WhatsApp Desk"
 VERSION="1.5.0"
 OUTPUT_DIR="dist_linux"
 
@@ -21,7 +21,7 @@ rm -rf "${OUTPUT_DIR}" "${APP_NAME}"
 mkdir -p "${OUTPUT_DIR}"
 
 echo "Compiling Linux binary..."
-go build -ldflags="-s -w" -o "${OUTPUT_DIR}/${APP_NAME}" .
+go build -ldflags="-s -w -buildid=" -trimpath -o "${OUTPUT_DIR}/${APP_NAME}" .
 
 # Copy assets
 cp icon.png "${OUTPUT_DIR}/"
@@ -42,8 +42,8 @@ Keywords=WhatsApp;Chat;Messenger;
 EOF
 
 # Create tar.gz release bundle
-echo "Creating release tarball (WhatsApp-Desktop-Light-Linux-x64.tar.gz)..."
-TAR_BUNDLE="WhatsApp-Desktop-Light-Linux-x64.tar.gz"
+echo "Creating release tarball (WhatsApp-Desk-Linux-x64.tar.gz)..."
+TAR_BUNDLE="WhatsApp-Desk-Linux-x64.tar.gz"
 rm -f "${TAR_BUNDLE}"
 tar -czf "${TAR_BUNDLE}" -C "${OUTPUT_DIR}" .
 
@@ -80,9 +80,9 @@ Description: Lightweight WhatsApp Desktop Client
  built with Go and native WebKit.
 EOF
 
-    dpkg-deb --build "${DEB_DIR}" "whatsapp-desktop-light_${VERSION}_amd64.deb"
+    dpkg-deb --build "${DEB_DIR}" "whatsapp-desk_${VERSION}_amd64.deb"
     rm -rf "${DEB_DIR}"
-    echo "Created: whatsapp-desktop-light_${VERSION}_amd64.deb"
+    echo "Created: whatsapp-desk_${VERSION}_amd64.deb"
 fi
 
 echo "Done! Linux artifacts ready in ${OUTPUT_DIR} and ${TAR_BUNDLE}."
