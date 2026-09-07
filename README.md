@@ -1,49 +1,37 @@
-# WhatsApp Desktop Light
+# WhatsApp Desk
 
-Aplikasi desktop WhatsApp Web yang ringan dan cepat untuk Windows dan macOS, dibangun menggunakan bahasa pemrograman Go.
+Aplikasi desktop WhatsApp Web yang ultra-ringan, cepat, dan hemat memori untuk **macOS**, **Windows**, dan **Linux**, dibangun menggunakan bahasa pemrograman Go.
 
-Aplikasi ini memanfaatkan engine webview bawaan sistem operasi (Microsoft Edge WebView2 di Windows dan Apple WebKit di macOS), sehingga tidak memerlukan runtime Electron yang memakan banyak memori dan ruang penyimpanan.
+Aplikasi ini memanfaatkan webview engine bawaan sistem operasi (Apple WebKit di macOS, Microsoft Edge WebView2 di Windows, dan WebKitGTK di Linux). Tanpa beban runtime Electron yang berat, aplikasi ini menghemat gigabyte penyimpanan dan ratusan megabyte RAM.
 
 ---
 
-## Unduh / Download
+## 📥 Unduh / Download
 
-Installer siap pakai dapat diunduh langsung lewat tautan di bawah ini:
+Installer dan biner siap pakai dapat diunduh langsung lewat tautan rilis di bawah ini:
 
-| Sistem Operasi | Berkas Installer | Tipe Arsitektur | Format | Ukuran |
+| Sistem Operasi | Berkas Installer / Biner | Tipe Arsitektur | Format | Ukuran |
 | :--- | :--- | :--- | :--- | :--- |
+| **macOS** | [📥 **Download WhatsApp-Desk-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg) | Universal (Apple Silicon M-Series & Intel) | Apple Disk Image (.dmg) | ~2.5 MB |
 | **Windows** | [📥 **Download WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe) | 64-bit (x64) | Portabel / Standalone | ~5 MB |
-| **macOS** | [📥 **Download WhatsApp-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-macOS-Universal.dmg) | Universal (Apple Silicon M-series & Intel) | Apple Disk Image (.dmg) | ~2.5 MB |
+| **Linux** | [📥 **Download WhatsApp-Desk-Linux-amd64.deb**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-amd64.deb) | 64-bit (x86_64) | Debian Package (.deb) | ~3 MB |
+| **Linux (Tarball)** | [📥 **Download WhatsApp-Desk-Linux-x64.tar.gz**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-x64.tar.gz) | 64-bit (x86_64) | Portable Tarball (.tar.gz) | ~3 MB |
 
-> Semua versi rilis, berkas alternatif (`.zip`), dan catatan pembaruan dapat dilihat di halaman [GitHub Releases](https://github.com/vianziro/Whatsapp-Dekstop/releases).
-
----
-
-## Latar Belakang
-
-Aplikasi resmi WhatsApp Desktop berbasis Electron umumnya membutuhkan memori RAM yang besar (sering kali mencapai 500 MB – 1 GB) serta ukuran instalasi lebih dari 400 MB, karena memuat seluruh browser Chromium dan runtime Node.js di latar belakang.
-
-Proyek ini bertujuan menyediakan alternatif desktop yang fungsional namun jauh lebih hemat sumber daya:
-- **Ukuran biner kecil**: ~2.3 MB di macOS dan ~5 MB di Windows tanpa dependensi tambahan yang perlu diunduh.
-- **Penggunaan memori rendah**: ~35 MB – 50 MB RAM saat kondisi idle chat aktif.
-- **Waktu startup instan**: terbuka dalam waktu kurang dari 0.5 detik.
-- **Konsumsi daya rendah**: memanfaatkan akselerasi grafis hardware bawaan sistem operasi.
+> Seluruh versi rilis, arsip `.zip`, dan catatan pembaruan dapat dilihat di halaman [GitHub Releases](https://github.com/vianziro/Whatsapp-Dekstop/releases).
 
 ---
 
-## Perbandingan Kebutuhan Sumber Daya
+## 🚀 Perbandingan Kebutuhan Sumber Daya
 
-Hasil pengujian langsung pada penggunaan normal:
-
-| Parameter | WhatsApp Desktop Light | WhatsApp Resmi (Electron) |
+| Parameter | WhatsApp Desk | WhatsApp Resmi (Electron) |
 | :--- | :--- | :--- |
-| **Ukuran Instalasi** | ~2.3 MB (macOS) / ~5 MB (Windows) | 470 MB+ |
-| **Konsumsi RAM (Idle)** | ~35 MB – 50 MB | 500 MB – 1+ GB |
-| **Engine Render** | Native OS (WebKit / WebView2) | Bundled Chromium + Node.js |
-| **Waktu Muat (Cold Start)** | < 0.5 detik | 3 – 5 detik |
-| **Beban CPU & Baterai** | Rendah (efisien) | Cenderung lebih berat |
+| **Ukuran Berkas** | **~2.5 MB (macOS) / ~5 MB (Win)** | 470 MB – 900 MB+ |
+| **Konsumsi RAM Fisik (RSS)** | **~35 MB (Core) / ~250–350 MB (Chat Aktif)** | 800 MB – 1.5 GB+ |
+| **Engine Render** | Native OS (WebKit / WebView2 / WebKitGTK) | Bundled Chromium + Node.js |
+| **Waktu Muat (Cold Start)** | **< 0.5 detik (Instan)** | 3 – 6 detik |
+| **Beban CPU & Baterai** | Sangat Rendah (Hardware Accelerated) | Cenderung lebih boros daya |
 | **Sesi Login** | Tersimpan di profil lokal terisolasi | Tersimpan di profil lokal |
-| **Enkripsi Chat** | End-to-End (protokol Signal resmi) | End-to-End (protokol Signal resmi) |
+| **Enkripsi Chat** | End-to-End resmi WhatsApp (Signal Protocol) | End-to-End resmi WhatsApp (Signal Protocol) |
 
 ---
 
@@ -81,25 +69,79 @@ Hasil pengujian langsung pada penggunaan normal:
 
 ---
 
-## Cara Instalasi
+## 📖 Panduan Instalasi & Cara Mengatasi Peringatan Keamanan
 
-### Pengguna Windows
-1. Unduh file [**WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe).
-2. Simpan file di folder yang Anda inginkan (misalnya di folder `Program Files` atau langsung di Desktop).
-3. Buat pintasan (*shortcut*) ke Desktop atau Start Menu jika diperlukan.
-4. Jalankan `WhatsApp.exe`, lalu pindai QR code menggunakan aplikasi WhatsApp di ponsel Anda untuk masuk pertama kali.
-5. Sesi login akan tersimpan otomatis, sehingga Anda tidak perlu memindai QR code lagi saat membuka aplikasi berikutnya.
+Karena aplikasi ini didistribusikan secara independen dan open-source (tanpa sertifikat berbayar Apple Developer ID $99/tahun atau Microsoft EV Code Signing yang mahal), sistem operasi mungkin menampilkan peringatan keamanan saat pertama kali dibuka. 
 
-*Catatan: Memerlukan Microsoft Edge WebView2 Runtime (sudah terpasang secara bawaan pada Windows 10 update terbaru dan seluruh versi Windows 11).*
+Berikut panduan instalasi dan solusi mudahnya di masing-masing sistem operasi:
 
-### Pengguna macOS
-1. Unduh file [**WhatsApp-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-macOS-Universal.dmg).
-2. Klik ganda berkas `.dmg` untuk membukanya.
-3. Seret (*drag and drop*) ikon **WhatsApp** ke folder **Applications**.
-4. Buka WhatsApp dari Launchpad, folder Applications, atau Spotlight (`Cmd + Spasi`).
-5. Pindai QR code menggunakan aplikasi WhatsApp di ponsel Anda untuk masuk pertama kali.
+---
+
+### 🍏 Pengguna macOS
+
+#### Langkah Instalasi:
+1. Unduh berkas [**WhatsApp-Desk-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg).
+2. Klik ganda berkas `.dmg` tersebut untuk membukanya.
+3. Seret (*drag and drop*) ikon **WhatsApp Desk** ke folder **Applications**.
+4. Buka WhatsApp Desk dari Launchpad, folder Applications, atau Spotlight (`Cmd + Spasi`).
+
+#### ⚠️ Solusi Error: *"WhatsApp" is damaged and can't be opened. You should move it to the Trash* atau *Unidentified Developer*
+
+Jika Anda mengunduh lewat Safari atau Chrome, macOS Gatekeeper otomatis menempelkan atribut karantina (*quarantine attribute*). Ini **bukan** berarti berkasnya rusak, melainkan proteksi bawaan macOS untuk aplikasi dari luar App Store.
+
+Pilih salah satu cara mudah di bawah ini untuk membukanya:
+
+- **Cara 1: Lewat Klik Kanan (Paling Praktis, Tanpa Terminal)**:
+  1. Buka folder **Applications** di Finder.
+  2. **Klik Kanan (atau tahan tombol `Control` lalu klik)** pada ikon **WhatsApp Desk**.
+  3. Pilih menu **Open**.
+  4. Akan muncul dialog konfirmasi dengan tombol **Open** (bukan Move to Trash). Klik tombol **Open**.
+  5. Aplikasi akan langsung terbuka, dan untuk seterusnya Anda bisa membukanya dengan klik kiri biasa.
+
+- **Cara 2: Lewat Terminal (Hapus Quarantine Flag Sekali Saja)**:
+  Buka aplikasi **Terminal**, salin dan jalankan perintah berikut:
+  ```bash
+  xattr -cr "/Applications/WhatsApp Desk.app"
+  ```
+  *(Atau jika berkas installer masih berada di folder Downloads: `xattr -cr ~/Downloads/"WhatsApp Desk.app"`)*
 
 *Catatan: Mendukung macOS 11.0 (Big Sur) ke atas. Biner bersifat Universal, sehingga berjalan optimal secara native baik di Apple Silicon (M1/M2/M3/M4) maupun Mac berbasis Intel.*
+
+---
+
+### 🪟 Pengguna Windows
+
+#### Langkah Instalasi:
+1. Unduh berkas [**WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe).
+2. Simpan berkas di folder yang Anda inginkan (misalnya `D:\Apps`, `Program Files`, atau Desktop).
+3. Buat pintasan (*shortcut*) ke Desktop atau Start Menu jika diperlukan.
+4. Klik ganda `WhatsApp.exe` untuk langsung menjalankannya (portabel tanpa perlu proses instalasi).
+
+#### ⚠️ Mengatasi Peringatan Windows SmartScreen (*"Windows protected your PC"*):
+1. Saat jendela biru SmartScreen muncul, klik tautan teks **"More info"** (*Info selengkapnya*).
+2. Klik tombol **"Run anyway"** (*Tetap jalankan*).
+3. Aplikasi akan langsung terbuka normal.
+
+*Catatan: Memerlukan Microsoft Edge WebView2 Runtime (secara default sudah terpasang di Windows 10 update terbaru dan seluruh versi Windows 11).*
+
+---
+
+### 🐧 Pengguna Linux
+
+#### Pilihan A: Menggunakan Paket Debian / Ubuntu (.deb)
+```bash
+sudo dpkg -i WhatsApp-Desk-Linux-amd64.deb
+sudo apt-get install -f # pasang dependensi jika belum lengkap
+```
+Aplikasi akan otomatis terpasang dan muncul di Application Menu / App Launcher desktop Anda.
+
+#### Pilihan B: Menggunakan Tarball Portabel (.tar.gz)
+```bash
+tar -xzf WhatsApp-Desk-Linux-x64.tar.gz
+cd dist_linux
+chmod +x whatsapp-desk
+./whatsapp-desk
+```
 
 ---
 
@@ -126,20 +168,21 @@ Hasil pengujian langsung pada penggunaan normal:
 
 ---
 
-## Keamanan & Privasi
+## 🔒 Keamanan & Privasi Data
 
-- **Tanpa Server Perantara**: Aplikasi ini memuat langsung antarmuka resmi WhatsApp Web (`https://web.whatsapp.com`) dari server Meta. Tidak ada server relai, proksi, atau backend perantara yang terlibat.
-- **Enkripsi Penuh**: Percakapan dienkripsi secara end-to-end menggunakan protokol Signal bawaan WhatsApp pada sisi browser.
+- **Tanpa Server Perantara (Direct to Meta)**: Aplikasi ini memuat langsung antarmuka resmi WhatsApp Web (`https://web.whatsapp.com`) dari server Meta. Tidak ada server relai, proksi, analitik pihak ketiga, atau backend perantara yang terlibat.
+- **Enkripsi Penuh (End-to-End)**: Percakapan dienkripsi secara end-to-end menggunakan protokol Signal resmi bawaan WhatsApp pada sisi browser.
 - **Penyimpanan Terisolasi**: Kredensial akun dan data cache disimpan di direktori data lokal pengguna:
-  - Windows: `%APPDATA%\WhatsAppDesktopLight\UserData\`
-  - macOS: `~/Library/WebKit/com.whatsapp.desktop.light/` dan `~/Library/Application Support/WhatsAppDesktopLight/UserData/`
-- **Kode Sumber Terbuka**: Seluruh logika aplikasi ditulis secara transparan di repositori ini dan dapat diaudit secara bebas.
+  - **macOS**: `~/Library/Application Support/WhatsAppDesk/UserData/`
+  - **Windows**: `%APPDATA%\WhatsAppDesk\UserData\`
+  - **Linux**: `~/.config/whatsapp-desk/`
+- **Kode Sumber Terbuka (Open Source)**: Seluruh logika aplikasi ditulis secara transparan di repositori ini dan dapat diaudit secara bebas oleh siapa pun.
 
 ---
 
-## Distribusi Biner Resmi
+## 📦 Distribusi Biner Resmi
 
-Untuk performa optimal, integritas file, dan kemudahan penggunaan, pengguna disarankan langsung mengunduh biner rilis resmi yang sudah dikompilasi dan dikemas pada tabel [Unduh / Download](#unduh--download) di atas. Versi rilis telah diuji stabilitasnya untuk lingkungan Windows 10/11 dan macOS (Apple Silicon & Intel).
+Untuk performa optimal, integritas file, dan kemudahan penggunaan, pengguna disarankan langsung mengunduh biner rilis resmi yang sudah dikompilasi dan dikemas pada tabel [Unduh / Download](#unduh--download) di atas. Versi rilis telah diuji stabilitasnya untuk lingkungan macOS (Apple Silicon & Intel), Windows 10/11, dan Linux.
 
 ---
 
