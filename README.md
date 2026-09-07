@@ -1,116 +1,120 @@
-# ⚡ WhatsApp Desktop Light
+# WhatsApp Desktop Light
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/vianziro/Whatsapp-Dekstop/main/AppIcon.icns" width="100" height="100" alt="WhatsApp Desktop Light Icon" onerror="this.style.display='none'"/>
-</p>
+Aplikasi desktop WhatsApp Web yang ringan dan cepat untuk Windows dan macOS, dibangun menggunakan bahasa pemrograman Go.
 
-<p align="center">
-  <b>Aplikasi WhatsApp Desktop super ringan, hemat RAM, dan hemat baterai untuk macOS dan Windows.</b><br>
-  Dibangun dengan <b>Go</b> dan native OS webview engine (<i>Apple WebKit</i> di macOS & <i>Microsoft Edge WebView2</i> di Windows) — <b>tanpa beban berat runtime Electron!</b>
-</p>
-
-<p align="center">
-  <a href="https://github.com/vianziro/Whatsapp-Dekstop/releases"><img src="https://img.shields.io/github/v/release/vianziro/Whatsapp-Dekstop?style=for-the-badge&color=25D366" alt="Latest Release"/></a>
-  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-blue?style=for-the-badge" alt="Platform"/>
-  <img src="https://img.shields.io/badge/Size-~2.3%20MB-success?style=for-the-badge" alt="Size"/>
-  <img src="https://img.shields.io/badge/RAM-~45%20MB-orange?style=for-the-badge" alt="RAM Usage"/>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-purple?style=for-the-badge" alt="License"/></a>
-</p>
+Aplikasi ini memanfaatkan engine webview bawaan sistem operasi (Microsoft Edge WebView2 di Windows dan Apple WebKit di macOS), sehingga tidak memerlukan runtime Electron yang memakan banyak memori dan ruang penyimpanan.
 
 ---
 
-## 💡 Mengapa Menggunakan WhatsApp Desktop Light?
+## Latar Belakang
 
-Apakah Anda lelah dengan aplikasi WhatsApp Desktop resmi yang memakan penyimpanan **ratusan megabyte**, menghabiskan **RAM hingga 1 GB**, dan membuat baterai laptop cepat habis hanya untuk sekadar chatting?
+Aplikasi resmi WhatsApp Desktop berbasis Electron umumnya membutuhkan memori RAM yang besar (sering kali mencapai 500 MB – 1 GB) serta ukuran instalasi lebih dari 400 MB, karena memuat seluruh browser Chromium dan runtime Node.js di latar belakang.
 
-**WhatsApp Desktop Light** hadir sebagai solusi: memanfaatkan mesin web bawaan sistem operasi Anda secara langsung, menghasilkan performa instan, penggunaan RAM minim, dan baterai yang jauh lebih tahan lama.
-
----
-
-## 📊 Perbandingan: WhatsApp Desktop Light vs WhatsApp Resmi (Electron)
-
-| Parameter | ⚡ WhatsApp Desktop Light | 🐢 WhatsApp Resmi (Electron) |
-| :--- | :---: | :---: |
-| **Ukuran di Disk** | **`~2.3 MB`** *(200x lebih kecil!)* | **`471 MB+`** |
-| **Konsumsi RAM (Idle)** | **`~35 MB – 50 MB`** | **`500 MB – 1+ GB`** |
-| **Kecepatan Membuka** | **`< 0.5 detik (Instan)`** | **`3 – 5 detik`** |
-| **Efisiensi Baterai** | **Sangat Hemat** *(Native WebKit/WebView2)* | **Boros** *(Banyak proses Chromium & Node)* |
-| **Suhu Laptop** | **Tetap Dingin** | **Sering Hangat / Kipas Menyala** |
-| **Notifikasi Badge Dock** | **Ada (Lingkaran merah unread di Dock)** | **Ada** |
-| **Shortcut Editing** | **Native macOS & Windows** | **Terkadang Lambat** |
-| **Mode Privasi (Anti-Intip)**| **Tersedia (`Cmd + Shift + P`)** | **Tidak Ada** |
-| **Privasi & Keamanan** | **Koneksi langsung ke server WhatsApp** | **Koneksi resmi WhatsApp** |
+Proyek ini bertujuan menyediakan alternatif desktop yang fungsional namun jauh lebih hemat sumber daya:
+- **Ukuran biner kecil**: ~2.3 MB di macOS dan ~5 MB di Windows tanpa dependensi tambahan yang perlu diunduh.
+- **Penggunaan memori rendah**: ~35 MB – 50 MB RAM saat kondisi idle chat aktif.
+- **Waktu startup instan**: terbuka dalam waktu kurang dari 0.5 detik.
+- **Konsumsi daya rendah**: memanfaatkan akselerasi grafis hardware bawaan sistem operasi.
 
 ---
 
-## ✨ Fitur-Fitur Unggulan
+## Perbandingan Kebutuhan Sumber Daya
 
-### 🍎 Pengalaman Native macOS (Apple Silicon & Intel)
-* 🔴 **Live Dock Badge Counter**: Menampilkan angka pesan masuk yang belum dibaca (misal: **`3`**, **`5`**) langsung di atas icon Dock Mac Anda.
-* 🪟 **Perilaku "Close to Hide"**: Menutup window (`Cmd + W` atau tombol silang merah) tidak mematikan aplikasi, melainkan menyembunyikannya ke background agar notifikasi tetap masuk. Klik icon Dock untuk memunculkannya kembali seketika.
-* 🔒 **Mode Privasi Kantor / Anti-Intip (`Cmd + Shift + P`)**: Menyamarkan (*blur*) semua isi chat, gambar, dan nama kontak secara instan. Cukup arahkan kursor (*hover*) ke pesan untuk membacanya. Sangat cocok saat berada di kafe atau kantor.
-* ⌨️ **Shortcut Keyboard macOS Lengkap**: Dukungan penuh `Cmd + C` (Copy), `Cmd + V` (Paste teks & gambar), `Cmd + X` (Cut), `Cmd + A` (Select All), `Cmd + Z` (Undo), dan `Cmd + Q` (Quit).
-* 🔍 **Kontrol Zoom Tampilan**: Perbesar atau perkecil teks dengan mudah menggunakan `Cmd + +` / `Cmd + -` / `Cmd + 0`.
-* 🌐 **Smart External Link Handler**: Link eksternal di chat (YouTube, GitHub, link berita) otomatis terbuka di browser default sistem tanpa mengganggu tampilan WhatsApp.
-* 🎙️ **Dukungan Audio & Voice Note**: Izin mikrofon otomatis untuk merekam voice note dan panggilan suara/video.
-* 💾 **Window State Memory**: Mengingat posisi dan ukuran window terakhir saat ditutup, sehingga saat dibuka kembali ukurannya tetap sesuai preferensi Anda.
+Hasil pengujian langsung pada penggunaan normal:
 
-### 🪟 Pengalaman Native Windows
-* 🎨 **Dark Title Bar & Frame**: Frame window gelap terintegrasi yang senada dengan tema WhatsApp Web (*DWM Dark Mode API*).
-* 🔔 **Windows Toast Notifications**: Notifikasi native Windows dengan preview pesan.
-* 🛡️ **Single-Instance Protection**: Mencegah aplikasi terbuka ganda secara tidak sengaja.
-
----
-
-## 📥 Download & Pemasangan Cepat
-
-Unduh versi terbaru dari halaman **[GitHub Releases](https://github.com/vianziro/Whatsapp-Dekstop/releases)**:
-
-### Untuk Pengguna macOS
-1. Unduh **`WhatsApp-macOS-Universal.zip`** dari rilis terbaru.
-2. Ekstrak file zip, lalu pindahkan **`WhatsApp.app`** ke folder **`/Applications`**.
-3. Buka aplikasi dan scan QR Code satu kali. Sesi Anda akan tersimpan permanen!
-
-> *Mendukung penuh semua tipe Mac: Apple Silicon (M1, M2, M3, M4) maupun Mac berbasis Intel.*
-
-### Untuk Pengguna Windows
-1. Unduh **`WhatsApp.exe`** dari rilis terbaru.
-2. Letakkan file di folder mana pun yang Anda inginkan, lalu jalankan.
-3. Scan QR Code dan nikmati WhatsApp Desktop super ringan!
-
----
-
-## ⌨️ Daftar Shortcut Keyboard
-
-| Pintasan (macOS) | Pintasan (Windows) | Aksi |
+| Parameter | WhatsApp Desktop Light | WhatsApp Resmi (Electron) |
 | :--- | :--- | :--- |
-| `Cmd + Shift + P` | `Ctrl + Shift + P` | **Toggle Mode Privasi** (Blur chat & media) |
-| `Cmd + +` / `Cmd + =` | `Ctrl + +` / `Ctrl + =` | **Zoom In** (Perbesar tampilan) |
-| `Cmd + -` | `Ctrl + -` | **Zoom Out** (Perkecil tampilan) |
-| `Cmd + 0` | `Ctrl + 0` | **Reset Zoom** (Kembali ke 100%) |
-| `Cmd + C` / `Cmd + V` | `Ctrl + C` / `Ctrl + V` | **Copy / Paste** teks & gambar |
-| `Cmd + W` | `Alt + F4` | **Sembunyikan Window** (Tetap terima notifikasi) |
-| `Cmd + Q` | `Alt + F4` | **Keluar dari Aplikasi Sepenuhnya** |
+| **Ukuran Instalasi** | ~2.3 MB (macOS) / ~5 MB (Windows) | 470 MB+ |
+| **Konsumsi RAM (Idle)** | ~35 MB – 50 MB | 500 MB – 1+ GB |
+| **Engine Render** | Native OS (WebKit / WebView2) | Bundled Chromium + Node.js |
+| **Waktu Muat (Cold Start)** | < 0.5 detik | 3 – 5 detik |
+| **Beban CPU & Baterai** | Rendah (efisien) | Cenderung lebih berat |
+| **Sesi Login** | Tersimpan di profil lokal terisolasi | Tersimpan di profil lokal |
+| **Enkripsi Chat** | End-to-End (protokol Signal resmi) | End-to-End (protokol Signal resmi) |
 
 ---
 
-## 🔒 Privasi & Keamanan
+## Fitur
 
-* **100% Bebas Server Perantara**: Aplikasi ini memuat langsung situs resmi `https://web.whatsapp.com`. Tidak ada server perantara (*middleman*), tidak ada proxy, dan tidak ada database pihak ketiga.
-* **Enkripsi End-to-End (E2EE)**: Seluruh percakapan dienkripsi menggunakan protokol Signal resmi milik WhatsApp di sisi klien.
-* **Penyimpanan Lokal Terisolasi**: Kredensial sesi, cookies, dan data chat tersimpan di folder aman pengguna:
-  - **macOS**: `~/Library/WebKit/com.whatsapp.desktop.light/` & `~/Library/Application Support/WhatsAppDesktopLight/UserData/`
-  - **Windows**: `%APPDATA%\WhatsAppDesktopLight\UserData\`
+### Fitur Lintas Platform (Windows & macOS)
+- **Sesi Login Persisten**: Data sesi (cookies, local storage, indexedDB) tersimpan di direktori profil khusus, sehingga tidak perlu melakukan scan QR code berulang kali setiap membuka aplikasi.
+- **Mode Privasi (Anti-Intip)**: Tekan `Ctrl + Shift + P` (Windows) atau `Cmd + Shift + P` (macOS) untuk menyamarkan (*blur*) pesan, gambar, dan nama kontak. Arahkan kursor mouse ke pesan untuk membacanya sementara.
+- **Dukungan Media Penuh**: Mendukung perekaman voice note, pemutaran audio/video, serta akses mikrofon dan kamera untuk panggilan suara maupun video.
+- **Pencegatan Link Eksternal**: Tautan situs web di dalam chat otomatis dibuka di browser default sistem (Chrome, Edge, Safari, dll.) tanpa mengganggu jendela WhatsApp.
+- **Kontrol Zoom Tampilan**: Sesuaikan ukuran teks dan antarmuka dengan shortcut `Ctrl/Cmd +`, `Ctrl/Cmd -`, dan `Ctrl/Cmd 0`.
+- **Proteksi Single-Instance**: Mencegah terbukanya dua jendela aplikasi yang sama secara bersamaan.
+
+### Integrasi Sistem Windows
+- **Microsoft Edge WebView2**: Menggunakan runtime WebView2 bawaan Windows 10/11 untuk kompatibilitas penuh dengan fitur web modern.
+- **Dark Mode Title Bar**: Frame jendela gelap yang menyatu dengan tema antarmuka WhatsApp menggunakan integrasi Win32 Desktop Window Manager (DWM).
+- **Windows Toast Notifications**: Menampilkan notifikasi native Windows saat ada pesan baru masuk.
+- **Penyimpanan Profil**: Data sesi disimpan rapi di folder `%APPDATA%\WhatsAppDesktopLight\UserData`.
+- **Portabel**: Berupa satu file executable mandiri (`WhatsApp.exe`) tanpa perlu proses instalasi yang rumit.
+
+### Integrasi Sistem macOS
+- **Apple WebKit (Cocoa)**: Menggunakan WKWebView native yang dioptimalkan untuk chip Apple Silicon (M1/M2/M3/M4) maupun prosesor Intel.
+- **Universal Binary**: Satu berkas aplikasi langsung mendukung arsitektur Apple Silicon (arm64) dan Intel (x86_64) tanpa memerlukan emulasi Rosetta.
+- **Badge Unread di Dock**: Menampilkan jumlah pesan yang belum dibaca langsung pada icon aplikasi di Dock macOS.
+- **Perilaku Close-to-Hide**: Menutup jendela dengan `Cmd + W` atau tombol silang merah hanya menyembunyikan jendela ke latar belakang; notifikasi tetap aktif dan jendela dapat dibuka kembali secara instan lewat Dock. Keluar penuh dilakukan dengan `Cmd + Q`.
+- **Menu Bar Cocoa Lengkap**: Mendukung shortcut standar macOS seperti `Cmd + C` (Copy), `Cmd + V` (Paste), `Cmd + X` (Cut), `Cmd + A` (Select All), dan `Cmd + Z` (Undo).
+- **Memori Ukuran Jendela**: Posisi dan ukuran jendela terakhir disimpan dan dipulihkan otomatis saat dibuka kembali.
 
 ---
 
-## 🛠️ Kompilasi dari Source Code
+## Cara Instalasi
+
+File rilis siap pakai dapat diunduh langsung dari menu **[Releases](https://github.com/vianziro/Whatsapp-Dekstop/releases)**.
+
+### Pengguna Windows
+1. Unduh berkas `WhatsApp.exe` dari rilis terbaru.
+2. Tempatkan berkas pada folder yang Anda inginkan (misalnya di Desktop atau folder program).
+3. Jalankan `WhatsApp.exe` dan pindai QR code untuk login pertama kali.
+
+*Catatan: Membutuhkan Microsoft Edge WebView2 Runtime (sudah terpasang secara default pada Windows 10 pembaruan terbaru dan Windows 11).*
+
+### Pengguna macOS
+1. Unduh berkas `WhatsApp-macOS-Universal.zip` dari rilis terbaru.
+2. Ekstrak arsip zip tersebut untuk mendapatkan `WhatsApp.app`.
+3. Pindahkan `WhatsApp.app` ke folder `/Applications` di Mac Anda.
+4. Buka aplikasi dan pindai QR code untuk login pertama kali.
+
+*Catatan: Mendukung macOS 11.0 (Big Sur) ke atas, baik pada Mac berprosesor Apple Silicon maupun Intel.*
+
+---
+
+## Pintasan Keyboard
+
+| macOS | Windows | Fungsi |
+| :--- | :--- | :--- |
+| `Cmd + Shift + P` | `Ctrl + Shift + P` | Mengaktifkan/menonaktifkan Mode Privasi (blur pesan) |
+| `Cmd + +` / `Cmd + =` | `Ctrl + +` / `Ctrl + =` | Memperbesar ukuran tampilan (Zoom In) |
+| `Cmd + -` | `Ctrl + -` | Memperkecil ukuran tampilan (Zoom Out) |
+| `Cmd + 0` | `Ctrl + 0` | Mengembalikan ukuran tampilan ke default (100%) |
+| `Cmd + C` / `Cmd + V` | `Ctrl + C` / `Ctrl + V` | Menyalin / menempel teks atau gambar |
+| `Cmd + W` | `Alt + F4` | Menyembunyikan jendela (aplikasi tetap aktif) |
+| `Cmd + Q` | `Alt + F4` | Menutup aplikasi secara penuh |
+
+---
+
+## Keamanan & Privasi
+
+- **Tanpa Server Perantara**: Aplikasi ini memuat langsung antarmuka resmi WhatsApp Web (`https://web.whatsapp.com`) dari server Meta. Tidak ada server relai, proksi, atau backend perantara yang terlibat.
+- **Enkripsi Penuh**: Percakapan dienkripsi secara end-to-end menggunakan protokol Signal bawaan WhatsApp pada sisi browser.
+- **Penyimpanan Terisolasi**: Kredensial akun dan data cache disimpan di direktori data lokal pengguna:
+  - Windows: `%APPDATA%\WhatsAppDesktopLight\UserData\`
+  - macOS: `~/Library/WebKit/com.whatsapp.desktop.light/` dan `~/Library/Application Support/WhatsAppDesktopLight/UserData/`
+- **Kode Sumber Terbuka**: Seluruh logika aplikasi ditulis secara transparan di repositori ini dan dapat diaudit secara bebas.
+
+---
+
+## Kompilasi Mandiri (Build from Source)
 
 ### Prasyarat
-- [Go 1.22+](https://golang.org)
-- Python 3 + Pillow (opsional, untuk generasi icon macOS)
+- Go versi 1.22 atau yang lebih baru.
+- Windows: Kompiler C untuk Windows (misalnya MinGW-w64 / GCC).
+- macOS: Xcode Command Line Tools (`xcode-select --install`) dan Python 3 + Pillow (untuk pembuatan icon `.icns`).
 
-### macOS (Universal Build)
+### Build di macOS
 ```bash
 git clone https://github.com/vianziro/Whatsapp-Dekstop.git
 cd Whatsapp-Dekstop
@@ -118,9 +122,9 @@ cd Whatsapp-Dekstop
 chmod +x build_mac.sh
 ./build_mac.sh
 ```
-Aplikasi `WhatsApp.app` akan otomatis siap di direktori kerja.
+Skrip ini akan mengompilasi biner universal (arm64 + x86_64) dan menghasilkan bundel `WhatsApp.app`.
 
-### Windows
+### Build di Windows
 ```powershell
 git clone https://github.com/vianziro/Whatsapp-Dekstop.git
 cd Whatsapp-Dekstop
@@ -130,12 +134,12 @@ go build -ldflags="-H windowsgui -s -w" -o WhatsApp.exe .
 
 ---
 
-## 📄 Lisensi
+## Lisensi
 
-Didistribusikan di bawah lisensi [MIT License](LICENSE). Bebas digunakan, dimodifikasi, dan didistribusikan.
+Proyek ini dilisensikan di bawah [MIT License](LICENSE).
 
 ---
 
-<p align="center">
-  Dibuat dengan ❤️ untuk pengguna yang menghargai efisiensi memori, performa cepat, dan daya tahan baterai.
-</p>
+## Penafian (Disclaimer)
+
+Proyek ini merupakan perangkat lunak independen dan tidak berafiliasi, disponsori, atau didukung secara resmi oleh WhatsApp atau Meta Platforms, Inc. WhatsApp adalah merek dagang terdaftar milik Meta Platforms, Inc.

@@ -5,7 +5,9 @@ package main
 import (
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -148,6 +150,15 @@ func runApp() {
 	// Bind native notification bridge
 	_ = w.Bind("sendNativeNotification", func(title, body string) {
 		go showNativeNotification(title, body, iconFullPath)
+	})
+
+	// Bind external link handler to open links in default Windows browser
+	_ = w.Bind("openExternalLink", func(rawURL string) {
+		if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
+			go func() {
+				_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL).Start()
+			}()
+		}
 	})
 
 	w.Init(getInitScript(userAgent))
