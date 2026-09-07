@@ -217,7 +217,7 @@ func getInitScript(ua string) string {
 			window.addEventListener('load', injectResponsive);
 			setInterval(injectResponsive, 2000);
 		})();
-	`
+	` + "\n" + getOnboardingScript()
 }
 
 type WindowState struct {

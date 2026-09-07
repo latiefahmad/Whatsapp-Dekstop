@@ -49,7 +49,7 @@ cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.2.0</string>
+    <string>1.3.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSRequiresAquaSystemAppearance</key>
@@ -69,6 +69,10 @@ if command -v hdiutil >/dev/null 2>&1; then
     mkdir -p "${DMG_DIR}"
     cp -R "${BUNDLE_DIR}" "${DMG_DIR}/"
     ln -s /Applications "${DMG_DIR}/Applications"
+    if [ -f "dmg_background.png" ]; then
+        mkdir -p "${DMG_DIR}/.background"
+        cp "dmg_background.png" "${DMG_DIR}/.background/background.png"
+    fi
     hdiutil create -volname "WhatsApp Desktop" -srcfolder "${DMG_DIR}" -ov -format UDZO "WhatsApp-macOS-Universal.dmg" || true
     rm -rf "${DMG_DIR}"
 fi
