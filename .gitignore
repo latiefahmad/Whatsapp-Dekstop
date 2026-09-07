@@ -8,3 +8,6 @@ WhatsApp_mac
 *.tmp
 *.log
 .github/
+config_private.go
+build_mac.sh
+dmg_background.png

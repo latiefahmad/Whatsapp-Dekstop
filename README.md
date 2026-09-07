@@ -121,30 +121,9 @@ Hasil pengujian langsung pada penggunaan normal:
 
 ---
 
-## Kompilasi Mandiri (Build from Source)
+## Distribusi Biner Resmi
 
-### Prasyarat
-- Go versi 1.22 atau yang lebih baru.
-- Windows: Kompiler C untuk Windows (misalnya MinGW-w64 / GCC).
-- macOS: Xcode Command Line Tools (`xcode-select --install`) dan Python 3 + Pillow (untuk pembuatan icon `.icns`).
-
-### Build di macOS
-```bash
-git clone https://github.com/vianziro/Whatsapp-Dekstop.git
-cd Whatsapp-Dekstop
-
-chmod +x build_mac.sh
-./build_mac.sh
-```
-Skrip ini akan mengompilasi biner universal (arm64 + x86_64) dan menghasilkan bundel `WhatsApp.app`.
-
-### Build di Windows
-```powershell
-git clone https://github.com/vianziro/Whatsapp-Dekstop.git
-cd Whatsapp-Dekstop
-
-go build -ldflags="-H windowsgui -s -w" -o WhatsApp.exe .
-```
+Untuk performa optimal, integritas file, dan kemudahan penggunaan, pengguna disarankan langsung mengunduh biner rilis resmi yang sudah dikompilasi dan dikemas pada tabel [Unduh / Download](#unduh--download) di atas. Versi rilis telah diuji stabilitasnya untuk lingkungan Windows 10/11 dan macOS (Apple Silicon & Intel).
 
 ---
 

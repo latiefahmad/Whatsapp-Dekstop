@@ -1,10 +1,8 @@
 package main
 
 const (
-	windowTitle  = "WhatsApp Desktop"
 	windowWidth  = 1100
 	windowHeight = 750
-	appURL       = "https://web.whatsapp.com"
 )
 
 func getInitScript(ua string) string {
@@ -228,5 +226,8 @@ type WindowState struct {
 }
 
 func main() {
+	if !validateBuildEnvironment() {
+		return
+	}
 	runApp()
 }
