@@ -4,5 +4,6 @@ WhatsApp_mac
 *.app
 *.icns
 *.dmg
+*.zip
 *.tmp
 *.log
