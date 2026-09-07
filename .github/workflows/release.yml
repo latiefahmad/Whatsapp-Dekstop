@@ -54,11 +54,13 @@ jobs:
           ./build_mac.sh
           ditto -c -k --sequesterRsrc --keepParent WhatsApp.app WhatsApp-macOS-Universal.zip
 
-      - name: Upload macOS App Zip
+      - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: WhatsApp-macOS-Universal
-          path: WhatsApp-macOS-Universal.zip
+          path: |
+            WhatsApp-macOS-Universal.dmg
+            WhatsApp-macOS-Universal.zip
 
   publish-release:
     name: Publish GitHub Release
@@ -83,6 +85,7 @@ jobs:
         with:
           files: |
             release-assets/WhatsApp.exe
+            release-assets/WhatsApp-macOS-Universal.dmg
             release-assets/WhatsApp-macOS-Universal.zip
           draft: false
           prerelease: false

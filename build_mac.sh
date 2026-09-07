@@ -49,7 +49,7 @@ cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.1.1</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSRequiresAquaSystemAppearance</key>
@@ -62,4 +62,15 @@ cat << 'EOF' > "${CONTENTS_DIR}/Info.plist"
 </plist>
 EOF
 
-echo "Done! Built ${APP_NAME}_mac and ${BUNDLE_DIR}"
+if command -v hdiutil >/dev/null 2>&1; then
+    echo "Creating DMG installer (WhatsApp-macOS-Universal.dmg)..."
+    DMG_DIR="dmg_temp"
+    rm -rf "${DMG_DIR}" "WhatsApp-macOS-Universal.dmg"
+    mkdir -p "${DMG_DIR}"
+    cp -R "${BUNDLE_DIR}" "${DMG_DIR}/"
+    ln -s /Applications "${DMG_DIR}/Applications"
+    hdiutil create -volname "WhatsApp Desktop" -srcfolder "${DMG_DIR}" -ov -format UDZO "WhatsApp-macOS-Universal.dmg" || true
+    rm -rf "${DMG_DIR}"
+fi
+
+echo "Done! Built ${APP_NAME}_mac, ${BUNDLE_DIR}, and DMG installer."

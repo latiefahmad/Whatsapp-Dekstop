@@ -6,6 +6,19 @@ Aplikasi ini memanfaatkan engine webview bawaan sistem operasi (Microsoft Edge W
 
 ---
 
+## Unduh / Download
+
+Installer siap pakai dapat diunduh langsung lewat tautan di bawah ini:
+
+| Sistem Operasi | Berkas Installer | Tipe Arsitektur | Format | Ukuran |
+| :--- | :--- | :--- | :--- | :--- |
+| **Windows** | [📥 **Download WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe) | 64-bit (x64) | Portabel / Standalone | ~5 MB |
+| **macOS** | [📥 **Download WhatsApp-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-macOS-Universal.dmg) | Universal (Apple Silicon M-series & Intel) | Apple Disk Image (.dmg) | ~2.5 MB |
+
+> Semua versi rilis, berkas alternatif (`.zip`), dan catatan pembaruan dapat dilihat di halaman [GitHub Releases](https://github.com/vianziro/Whatsapp-Dekstop/releases).
+
+---
+
 ## Latar Belakang
 
 Aplikasi resmi WhatsApp Desktop berbasis Electron umumnya membutuhkan memori RAM yang besar (sering kali mencapai 500 MB – 1 GB) serta ukuran instalasi lebih dari 400 MB, karena memuat seluruh browser Chromium dan runtime Node.js di latar belakang.
@@ -63,22 +76,23 @@ Hasil pengujian langsung pada penggunaan normal:
 
 ## Cara Instalasi
 
-File rilis siap pakai dapat diunduh langsung dari menu **[Releases](https://github.com/vianziro/Whatsapp-Dekstop/releases)**.
-
 ### Pengguna Windows
-1. Unduh berkas `WhatsApp.exe` dari rilis terbaru.
-2. Tempatkan berkas pada folder yang Anda inginkan (misalnya di Desktop atau folder program).
-3. Jalankan `WhatsApp.exe` dan pindai QR code untuk login pertama kali.
+1. Unduh file [**WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe).
+2. Simpan file di folder yang Anda inginkan (misalnya di folder `Program Files` atau langsung di Desktop).
+3. Buat pintasan (*shortcut*) ke Desktop atau Start Menu jika diperlukan.
+4. Jalankan `WhatsApp.exe`, lalu pindai QR code menggunakan aplikasi WhatsApp di ponsel Anda untuk masuk pertama kali.
+5. Sesi login akan tersimpan otomatis, sehingga Anda tidak perlu memindai QR code lagi saat membuka aplikasi berikutnya.
 
-*Catatan: Membutuhkan Microsoft Edge WebView2 Runtime (sudah terpasang secara default pada Windows 10 pembaruan terbaru dan Windows 11).*
+*Catatan: Memerlukan Microsoft Edge WebView2 Runtime (sudah terpasang secara bawaan pada Windows 10 update terbaru dan seluruh versi Windows 11).*
 
 ### Pengguna macOS
-1. Unduh berkas `WhatsApp-macOS-Universal.zip` dari rilis terbaru.
-2. Ekstrak arsip zip tersebut untuk mendapatkan `WhatsApp.app`.
-3. Pindahkan `WhatsApp.app` ke folder `/Applications` di Mac Anda.
-4. Buka aplikasi dan pindai QR code untuk login pertama kali.
+1. Unduh file [**WhatsApp-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-macOS-Universal.dmg).
+2. Klik ganda berkas `.dmg` untuk membukanya.
+3. Seret (*drag and drop*) ikon **WhatsApp** ke folder **Applications**.
+4. Buka WhatsApp dari Launchpad, folder Applications, atau Spotlight (`Cmd + Spasi`).
+5. Pindai QR code menggunakan aplikasi WhatsApp di ponsel Anda untuk masuk pertama kali.
 
-*Catatan: Mendukung macOS 11.0 (Big Sur) ke atas, baik pada Mac berprosesor Apple Silicon maupun Intel.*
+*Catatan: Mendukung macOS 11.0 (Big Sur) ke atas. Biner bersifat Universal, sehingga berjalan optimal secara native baik di Apple Silicon (M1/M2/M3/M4) maupun Mac berbasis Intel.*
 
 ---
 
