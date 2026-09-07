@@ -3,12 +3,14 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/go-toast/toast"
@@ -17,19 +19,34 @@ import (
 )
 
 var (
-	kernel32        = windows.NewLazySystemDLL("kernel32.dll")
-	user32          = windows.NewLazySystemDLL("user32.dll")
-	dwmapi          = windows.NewLazySystemDLL("dwmapi.dll")
-	procCreateMutex = kernel32.NewProc("CreateMutexW")
-	procFindWindow  = user32.NewProc("FindWindowW")
-	procSetFgWindow = user32.NewProc("SetForegroundWindow")
-	procShowNormal  = user32.NewProc("ShowWindow")
-	procDwmSetAttr  = dwmapi.NewProc("DwmSetWindowAttribute")
+	kernel32          = windows.NewLazySystemDLL("kernel32.dll")
+	user32            = windows.NewLazySystemDLL("user32.dll")
+	dwmapi            = windows.NewLazySystemDLL("dwmapi.dll")
+	procCreateMutex   = kernel32.NewProc("CreateMutexW")
+	procFindWindow    = user32.NewProc("FindWindowW")
+	procSetFgWindow   = user32.NewProc("SetForegroundWindow")
+	procShowNormal    = user32.NewProc("ShowWindow")
+	procDwmSetAttr    = dwmapi.NewProc("DwmSetWindowAttribute")
+	procGetWindowLong = user32.NewProc("GetWindowLongW")
+	procSetWindowLong = user32.NewProc("SetWindowLongW")
+	procSetWindowPos  = user32.NewProc("SetWindowPos")
+	procGetWindowRect = user32.NewProc("GetWindowRect")
+	procMoveWindow    = user32.NewProc("MoveWindow")
 )
 
 const (
 	mutexName = "WhatsAppDesktopSingleInstanceMutex"
 	userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+
+	// Win32 Window Styles for Dynamic Resizability
+	GWL_STYLE        = 0xFFFFFFF0 // -16
+	WS_THICKFRAME    = 0x00040000
+	WS_MAXIMIZEBOX   = 0x00010000
+	WS_MINIMIZEBOX   = 0x00020000
+	SWP_FRAMECHANGED = 0x0020
+	SWP_NOMOVE       = 0x0002
+	SWP_NOSIZE       = 0x0001
+	SWP_NOZORDER     = 0x0004
 
 	// DWM Window Attributes for Dark Theme
 	DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19
@@ -37,6 +54,10 @@ const (
 	DWMWA_CAPTION_COLOR                       = 35
 	DWMWA_TEXT_COLOR                          = 36
 )
+
+type RECT struct {
+	Left, Top, Right, Bottom int32
+}
 
 func setDarkWindowFrame(hwnd uintptr) {
 	darkMode := int32(1)
@@ -112,6 +133,55 @@ func showNativeNotification(title, message, iconPath string) {
 	_ = notification.Push()
 }
 
+func configureWindow(hwnd uintptr) {
+	setDarkWindowFrame(hwnd)
+
+	// Ensure sizing border and maximize/minimize buttons are enabled
+	gwlStyle := uintptr(GWL_STYLE)
+	style, _, _ := procGetWindowLong.Call(hwnd, gwlStyle)
+	style |= WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX
+	procSetWindowLong.Call(hwnd, gwlStyle, style)
+	procSetWindowPos.Call(hwnd, 0, 0, 0, 0, 0, uintptr(SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER|SWP_FRAMECHANGED))
+}
+
+func loadWindowState(dir string) *WindowState {
+	path := filepath.Join(dir, "window_state.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var state WindowState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return nil
+	}
+	if state.Width < 450 || state.Height < 320 {
+		return nil
+	}
+	return &state
+}
+
+func saveWindowState(dir string, hwnd uintptr) {
+	var r RECT
+	ret, _, _ := procGetWindowRect.Call(hwnd, uintptr(unsafe.Pointer(&r)))
+	if ret == 0 {
+		return
+	}
+	w := r.Right - r.Left
+	h := r.Bottom - r.Top
+	if w >= 450 && h >= 320 {
+		state := WindowState{
+			X:      float64(r.Left),
+			Y:      float64(r.Top),
+			Width:  float64(w),
+			Height: float64(h),
+		}
+		data, err := json.MarshalIndent(state, "", "  ")
+		if err == nil {
+			_ = os.WriteFile(filepath.Join(dir, "window_state.json"), data, 0644)
+		}
+	}
+}
+
 func runApp() {
 	_, isSingle := checkSingleInstance()
 	if !isSingle {
@@ -142,10 +212,23 @@ func runApp() {
 	defer w.Destroy()
 
 	hwnd := uintptr(w.Window())
-	setDarkWindowFrame(hwnd)
+	configureWindow(hwnd)
 
 	w.SetTitle(windowTitle)
+	w.SetSize(450, 320, webview2.HintMin)
 	w.SetSize(windowWidth, windowHeight, webview2.HintNone)
+
+	if state := loadWindowState(userDataDir); state != nil {
+		procMoveWindow.Call(hwnd, uintptr(int32(state.X)), uintptr(int32(state.Y)), uintptr(int32(state.Width)), uintptr(int32(state.Height)), 1)
+	}
+
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			saveWindowState(userDataDir, hwnd)
+		}
+	}()
 
 	// Bind native notification bridge
 	_ = w.Bind("sendNativeNotification", func(title, body string) {
@@ -163,5 +246,7 @@ func runApp() {
 
 	w.Init(getInitScript(userAgent))
 	w.Navigate(appURL)
+
+	defer saveWindowState(userDataDir, hwnd)
 	w.Run()
 }

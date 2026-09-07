@@ -53,6 +53,7 @@ static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) 
         NSView* contentView = [win contentView];
         if ([contentView isKindOfClass:[WKWebView class]]) {
             WKWebView* wv = (WKWebView*)contentView;
+            [wv setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
             NSString* ua = [NSString stringWithUTF8String:uaStr];
             [wv setCustomUserAgent:ua];
 
@@ -65,8 +66,28 @@ static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) 
 static void configureWindowBehavior(void* nsWindowPtr) {
     @autoreleasepool {
         NSWindow* win = (__bridge NSWindow*)nsWindowPtr;
+
+        // Ensure window is fully resizable, minimizable, and supports fullscreen
+        NSWindowStyleMask mask = [win styleMask];
+        mask |= (NSWindowStyleMaskResizable | NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable);
+        [win setStyleMask:mask];
+
+        [win setCollectionBehavior:(NSWindowCollectionBehaviorFullScreenPrimary | NSWindowCollectionBehaviorDefault)];
+        [win setShowsResizeIndicator:YES];
+
+        // Minimum bounds: allow shrinking down dynamically to compact window
+        [win setMinSize:NSMakeSize(450, 320)];
+        [win setContentMinSize:NSMakeSize(450, 320)];
+        [win setMaxSize:NSMakeSize(FLT_MAX, FLT_MAX)];
+        [win setContentMaxSize:NSMakeSize(FLT_MAX, FLT_MAX)];
+
         win.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
         win.titlebarAppearsTransparent = YES;
+
+        NSView* contentView = [win contentView];
+        if (contentView) {
+            [contentView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
+        }
 
         g_windowDelegate = [[WhatsAppWindowDelegate alloc] init];
         [win setDelegate:g_windowDelegate];
@@ -168,13 +189,6 @@ import (
 
 const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
 
-type WindowState struct {
-	X      float64 `json:"x"`
-	Y      float64 `json:"y"`
-	Width  float64 `json:"width"`
-	Height float64 `json:"height"`
-}
-
 func getUserDataDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -195,7 +209,7 @@ func loadWindowState(dir string) *WindowState {
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil
 	}
-	if state.Width < 500 || state.Height < 400 {
+	if state.Width < 450 || state.Height < 320 {
 		return nil
 	}
 	return &state
@@ -207,7 +221,7 @@ func saveWindowState(dir string, win unsafe.Pointer) {
 	}
 	var x, y, w, h C.double
 	C.getWindowFrame(win, &x, &y, &w, &h)
-	if w >= 500 && h >= 400 {
+	if w >= 450 && h >= 320 {
 		state := WindowState{
 			X:      float64(x),
 			Y:      float64(y),
@@ -271,11 +285,10 @@ func runApp() {
 
 	w.SetTitle(windowTitle)
 
-	// 4. Restore window size and position if previously saved
+	// 4. Ensure window is initialized with HintNone (resizable), then restore saved state
+	w.SetSize(windowWidth, windowHeight, webview.HintNone)
 	if state := loadWindowState(userDataDir); state != nil {
 		C.setWindowFrame(w.Window(), C.double(state.X), C.double(state.Y), C.double(state.Width), C.double(state.Height))
-	} else {
-		w.SetSize(windowWidth, windowHeight, webview.HintNone)
 	}
 
 	// 5. Save window state periodically

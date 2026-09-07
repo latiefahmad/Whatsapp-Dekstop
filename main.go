@@ -196,7 +196,35 @@ func getInitScript(ua string) string {
 				}
 			});
 		})();
+
+		// Dynamic Responsive Desktop Layout (enables seamless shrinking and expanding)
+		(function() {
+			var respStyle = document.createElement('style');
+			respStyle.id = 'whatsapp-desktop-responsive';
+			respStyle.textContent = '' +
+				'html, body, #app { width: 100% !important; height: 100% !important; min-width: 0 !important; overflow: hidden !important; }' +
+				'#app > div, #app .two { width: 100% !important; height: 100% !important; min-width: 0 !important; max-width: 100% !important; top: 0 !important; margin: 0 !important; border-radius: 0 !important; }' +
+				'#pane-side, div[data-testid="chat-list"] { min-width: 200px !important; }' +
+				'#main { min-width: 240px !important; }';
+
+			function injectResponsive() {
+				if (document.head && !document.getElementById('whatsapp-desktop-responsive')) {
+					document.head.appendChild(respStyle);
+				}
+			}
+			injectResponsive();
+			document.addEventListener('DOMContentLoaded', injectResponsive);
+			window.addEventListener('load', injectResponsive);
+			setInterval(injectResponsive, 2000);
+		})();
 	`
+}
+
+type WindowState struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
 }
 
 func main() {
