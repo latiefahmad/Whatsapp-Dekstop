@@ -367,10 +367,7 @@ static void setupStatusItem(void) {
         NSMenuItem* relItem = [trayMenu addItemWithTitle:@"Muat Ulang Percakapan" action:@selector(menuReloadChat:) keyEquivalent:@""];
         [relItem setTarget:g_menuBridge];
 
-        [trayMenu addItem:[NSMenuItem separatorItem]];
-
-        NSMenuItem* quitItem = [trayMenu addItemWithTitle:@"Keluar dari WhatsApp" action:@selector(terminate:) keyEquivalent:@"q"];
-        [trayMenu addItem:quitItem];
+        [trayMenu addItemWithTitle:@"Keluar dari WhatsApp" action:@selector(terminate:) keyEquivalent:@"q"];
 
         [g_statusItem setMenu:trayMenu];
     }
