@@ -1,14 +1,13 @@
 # WhatsApp Webview Desktop
 
-Lightweight Windows desktop wrapper for [WhatsApp Web](https://web.whatsapp.com), built with Go and Microsoft Edge WebView2.
+Lightweight desktop wrapper for [WhatsApp Web](https://web.whatsapp.com), built with Go, Microsoft Edge WebView2 (Windows), and WebKit WKWebView (macOS).
 
 ## Features
 
-- Native Windows WebView2 window instead of Electron.
+- Native desktop window instead of heavy Electron (WebView2 on Windows, WKWebView on macOS).
 - Persistent WhatsApp session across app restarts.
 - Cookies, LocalStorage, IndexedDB, and service-worker data stored in a dedicated profile.
-- Dark Windows title bar and frame.
-- Windows toast notification bridge.
+- Native notification bridge (Windows Toast and macOS Notification Center).
 - Camera and microphone access for WhatsApp voice and video calls.
 - Single-instance protection.
 - High-DPI display support.
@@ -16,28 +15,37 @@ Lightweight Windows desktop wrapper for [WhatsApp Web](https://web.whatsapp.com)
 
 ## Requirements
 
+### Windows
 - Windows 10 or newer.
-- Microsoft Edge WebView2 Runtime. The app can download it automatically when missing.
-- WhatsApp account paired with WhatsApp Web.
+- Microsoft Edge WebView2 Runtime.
 
-## Download
-
-Download `WhatsApp.exe` from the latest [GitHub Release](https://github.com/Adytm404/whatsapp-web.view/releases).
-
-Run the executable, scan the QR code, allow camera and microphone access when prompted by Windows, and keep using WhatsApp normally. The session is saved automatically.
+### macOS
+- macOS 11.0 (Big Sur) or newer (Apple Silicon and Intel supported).
 
 ## Session Data
 
 Profile data is stored at:
-
-```text
-%APPDATA%\WhatsAppDesktopLight\UserData
-```
+- **Windows**: `%APPDATA%\WhatsAppDesktopLight\UserData`
+- **macOS**: `~/Library/Application Support/WhatsAppDesktopLight/UserData`
 
 Do not delete this folder if the existing login session must remain available. Closing the app does not clear session data.
 
 ## Build From Source
 
+### macOS
+Run the build script to compile the binary and generate `WhatsApp.app`:
+
+```bash
+chmod +x build_mac.sh
+./build_mac.sh
+```
+
+To run:
+```bash
+open WhatsApp.app
+```
+
+### Windows
 Install Go and a Windows C compiler, then run:
 
 ```powershell
@@ -45,11 +53,12 @@ go mod download
 go build -ldflags="-H windowsgui -s -w" -o WhatsApp.exe .
 ```
 
-The repository includes the Windows manifest and embedded icon resource used by the build.
-
 ## Project Files
 
-- `main.go`: WebView2 window, persistent profile, dark frame, and notifications.
+- `main.go`: Shared entry point, user-agent spoofing, and notification polyfill scripts.
+- `app_darwin.go`: macOS implementation with WebKit (WKWebView), AppleScript notifications, and file lock.
+- `app_windows.go`: Windows implementation with Edge WebView2, DWM dark mode, and toast notifications.
+- `build_mac.sh`: macOS build and .app packaging script.
 - `app.manifest`: Windows DPI and application manifest.
 - `resource.rc`: Windows icon and manifest resource definitions.
 - `icon.ico`: Application icon.

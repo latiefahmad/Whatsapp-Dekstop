@@ -1,4 +1,7 @@
 WhatsApp.exe
 WhatsApp.exe~
+WhatsApp_mac
+*.app
+*.icns
 *.tmp
 *.log

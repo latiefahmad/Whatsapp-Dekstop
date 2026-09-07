@@ -259,7 +259,7 @@ func (e *Chromium) PermissionRequested(_ *ICoreWebView2, args *iCoreWebView2Perm
 	var kind CoreWebView2PermissionKind
 	_, _, _ = args.vtbl.GetPermissionKind.Call(
 		uintptr(unsafe.Pointer(args)),
-		uintptr(unsafe.Pointer(&kind)),
+		uintptr(kind),
 	)
 	var result CoreWebView2PermissionState
 	if e.globalPermission != nil {

@@ -1,6 +1,6 @@
 module whatsapp-desktop
 
-go 1.26.4
+go 1.26.0
 
 require (
 	github.com/go-toast/toast v0.0.0-20190211030409-01e6764cf0a4 // indirect
