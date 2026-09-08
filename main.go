@@ -601,7 +601,7 @@ func getInitScript(ua string) string {
 				var msg = document.createElement('span');
 				msg.id = 'wa-update-text';
 				msg.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;color:#d1d7db;';
-				var titleText = releaseTitle ? releaseTitle : ('WhatsApp Desktop Light v' + latestVersion);
+				var titleText = releaseTitle ? releaseTitle : ('WhatsApp Desk v' + latestVersion);
 				msg.innerHTML = 'Pembaruan tersedia: <strong style="color:#e9edef;">' + titleText + '</strong>';
 
 				leftWrap.appendChild(badge);
@@ -654,6 +654,14 @@ func getInitScript(ua string) string {
 				banner.appendChild(rightWrap);
 				document.body.appendChild(banner);
 
+				try {
+					if (window.sendNativeNotification) {
+						var notifTitle = 'Pembaruan Tersedia';
+						var notifBody = 'WhatsApp Desk v' + latestVersion + ' telah dirilis. Klik untuk memperbarui aplikasi.';
+						window.sendNativeNotification(notifTitle, notifBody);
+					}
+				} catch (e) {}
+
 				btnUpdate.onclick = function() {
 					actionsDiv.style.display = 'none';
 					progressWrap.style.display = 'flex';
@@ -699,8 +707,8 @@ func getInitScript(ua string) string {
 						if (res && res.available) {
 							window.showUpdateBanner(res.latest_version, res.release_title, res.download_url);
 						} else {
-							var cur = (res && res.current_version) ? res.current_version : '1.4.0';
-							showFloatingToast('✅ WhatsApp Desktop Light sudah versi terbaru (v' + cur + ')');
+							var cur = (res && res.current_version) ? res.current_version : '1.5.1';
+							showFloatingToast('✅ WhatsApp Desk sudah versi terbaru (v' + cur + ')');
 						}
 						return res;
 					}).catch(function() {
@@ -1039,7 +1047,7 @@ func getInitScript(ua string) string {
 					'  </div>' +
 					'  <div>' +
 					'    <h3 id="wa-modal-title" style="margin:0;font-size:15px;font-weight:600;">WhatsApp Desk</h3>' +
-					'    <span id="wa-modal-sub" style="font-size:11px;">Klien Ringan Cepat • Versi 1.5.0</span>' +
+					'    <span id="wa-modal-sub" style="font-size:11px;">Klien Ringan Cepat • Versi 1.5.1</span>' +
 					'  </div>' +
 					'</div>' +
 					'<button id="wa-settings-close-x" style="background:transparent;border:none;cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;">✕</button>';

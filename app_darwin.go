@@ -908,16 +908,26 @@ func runApp() {
 	w.Init(getInitScript(userAgent))
 	w.Navigate(appURL)
 
-	// 12. Check for updates in the background after startup
+	// 12. Check for updates in the background after startup & periodically
 	go func() {
+		checkAndNotifyUpdate := func() {
+			info, err := checkForUpdate(appVersion)
+			if err == nil && info != nil && info.Available {
+				w.Dispatch(func() {
+					script := fmt.Sprintf("if (window.showUpdateBanner) { window.showUpdateBanner(%q, %q, %q); }",
+						info.LatestVersion, info.ReleaseTitle, info.DownloadURL)
+					w.Eval(script)
+				})
+			}
+		}
+
 		time.Sleep(5 * time.Second)
-		info, err := checkForUpdate(appVersion)
-		if err == nil && info != nil && info.Available {
-			w.Dispatch(func() {
-				script := fmt.Sprintf("if (window.showUpdateBanner) { window.showUpdateBanner(%q, %q, %q); }",
-					info.LatestVersion, info.ReleaseTitle, info.DownloadURL)
-				w.Eval(script)
-			})
+		checkAndNotifyUpdate()
+
+		ticker := time.NewTicker(4 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			checkAndNotifyUpdate()
 		}
 	}()
 
