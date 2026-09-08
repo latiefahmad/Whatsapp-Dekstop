@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -20,19 +21,24 @@ import (
 )
 
 var (
-	kernel32          = windows.NewLazySystemDLL("kernel32.dll")
-	user32            = windows.NewLazySystemDLL("user32.dll")
-	dwmapi            = windows.NewLazySystemDLL("dwmapi.dll")
-	procCreateMutex   = kernel32.NewProc("CreateMutexW")
-	procFindWindow    = user32.NewProc("FindWindowW")
-	procSetFgWindow   = user32.NewProc("SetForegroundWindow")
-	procShowNormal    = user32.NewProc("ShowWindow")
-	procDwmSetAttr    = dwmapi.NewProc("DwmSetWindowAttribute")
-	procGetWindowLong = user32.NewProc("GetWindowLongW")
-	procSetWindowLong = user32.NewProc("SetWindowLongW")
-	procSetWindowPos  = user32.NewProc("SetWindowPos")
-	procGetWindowRect = user32.NewProc("GetWindowRect")
-	procMoveWindow    = user32.NewProc("MoveWindow")
+	kernel32                     = windows.NewLazySystemDLL("kernel32.dll")
+	user32                       = windows.NewLazySystemDLL("user32.dll")
+	dwmapi                       = windows.NewLazySystemDLL("dwmapi.dll")
+	procCreateMutex              = kernel32.NewProc("CreateMutexW")
+	procFindWindow               = user32.NewProc("FindWindowW")
+	procSetFgWindow              = user32.NewProc("SetForegroundWindow")
+	procShowNormal               = user32.NewProc("ShowWindow")
+	procDwmSetAttr               = dwmapi.NewProc("DwmSetWindowAttribute")
+	procGetWindowLong            = user32.NewProc("GetWindowLongW")
+	procSetWindowLong            = user32.NewProc("SetWindowLongW")
+	procSetWindowPos             = user32.NewProc("SetWindowPos")
+	procGetWindowRect            = user32.NewProc("GetWindowRect")
+	procMoveWindow               = user32.NewProc("MoveWindow")
+	procCreateJobObject          = kernel32.NewProc("CreateJobObjectW")
+	procSetInformationJobObject  = kernel32.NewProc("SetInformationJobObject")
+	procAssignProcessToJobObject = kernel32.NewProc("AssignProcessToJobObject")
+	procSetProcessWorkingSetSize = kernel32.NewProc("SetProcessWorkingSetSize")
+	procGetCurrentProcess        = kernel32.NewProc("GetCurrentProcess")
 
 	isAlwaysOnTopWin = false
 )
@@ -92,6 +98,83 @@ func toggleAutoStartWindows() bool {
 	dataVal := fmt.Sprintf("\"%s\"", execPath)
 	err = exec.Command("reg", "add", runKey, "/v", valName, "/t", "REG_SZ", "/d", dataVal, "/f").Run()
 	return err == nil
+}
+
+const (
+	JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+	JobObjectExtendedLimitInformation  = 9
+)
+
+type IO_COUNTERS struct {
+	ReadOperationCount  uint64
+	WriteOperationCount uint64
+	OtherOperationCount uint64
+	ReadTransferCount   uint64
+	WriteTransferCount  uint64
+	OtherTransferCount  uint64
+}
+
+type JOBOBJECT_BASIC_LIMIT_INFORMATION struct {
+	PerProcessUserTimeLimit int64
+	PerJobUserTimeLimit     int64
+	LimitFlags              uint32
+	MinimumWorkingSetSize   uintptr
+	MaximumWorkingSetSize   uintptr
+	ActiveProcessLimit      uint32
+	Affinity                uintptr
+	PriorityClass           uint32
+	SchedulingClass         uint32
+}
+
+type JOBOBJECT_EXTENDED_LIMIT_INFORMATION struct {
+	BasicLimitInformation JOBOBJECT_BASIC_LIMIT_INFORMATION
+	IoInfo                IO_COUNTERS
+	ProcessMemoryLimit    uintptr
+	JobMemoryLimit        uintptr
+	PeakProcessMemoryUsed uintptr
+	PeakJobMemoryUsed     uintptr
+}
+
+func initWindowsProcessProtection() {
+	// 1. Assign process to Job Object with KILL_ON_JOB_CLOSE so Windows kernel
+	// automatically kills all child msedgewebview2.exe processes on exit or crash.
+	// This permanently prevents orphaned "WebView2 Manager" processes in RAM.
+	job, _, _ := procCreateJobObject.Call(0, 0)
+	if job != 0 {
+		var info JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+		info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+		procSetInformationJobObject.Call(
+			job,
+			uintptr(JobObjectExtendedLimitInformation),
+			uintptr(unsafe.Pointer(&info)),
+			uintptr(unsafe.Sizeof(info)),
+		)
+		curProc, _, _ := procGetCurrentProcess.Call()
+		procAssignProcessToJobObject.Call(job, curProc)
+	}
+
+	// 2. Configure WebView2 / Chromium engine arguments for aggressive memory & cache limits:
+	// - Limit V8 JS heap to 256MB and optimize for memory footprint
+	// - Cap disk cache to 32MB and media cache to 16MB
+	// - Disable background telemetry, component updates (which caused 8.8 MB/s disk I/O), and caching
+	browserArgs := []string{
+		"--disable-features=Translate,OptimizationHints,MediaRouter,CalculateNativeWinOcclusion,BackForwardCache,InterestFeedContentSuggestions",
+		"--disk-cache-size=33554432",                                  // Cap disk cache to 32MB
+		"--media-cache-size=16777216",                                 // Cap media cache to 16MB
+		"--js-flags=\"--max-old-space-size=256 --optimize_for_size\"", // Cap V8 JS heap to 256MB
+		"--disable-gpu-shader-disk-cache",
+		"--disable-background-networking",
+		"--disable-component-update",
+		"--disable-domain-reliability",
+		"--disable-sync",
+	}
+	_ = os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", strings.Join(browserArgs, " "))
+
+	// 3. Clean up any leftover orphaned WebView2 instances from previous sessions
+	go func() {
+		psCmd := `Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | Where-Object { $_.CommandLine -like "*WhatsAppDesk*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`
+		_ = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", psCmd).Run()
+	}()
 }
 
 type RECT struct {
@@ -233,6 +316,7 @@ func saveWindowState(dir string, hwnd uintptr) {
 
 func runApp() {
 	cleanupOldWindowsBinary()
+	initWindowsProcessProtection()
 	_, isSingle := checkSingleInstance()
 	if !isSingle {
 		os.Exit(0)
@@ -277,6 +361,17 @@ func runApp() {
 		defer ticker.Stop()
 		for range ticker.C {
 			saveWindowState(userDataDir, hwnd)
+		}
+	}()
+
+	// Periodic Working Set & Go runtime memory cleanup (every 60s)
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		curProc, _, _ := procGetCurrentProcess.Call()
+		for range ticker.C {
+			debug.FreeOSMemory()
+			procSetProcessWorkingSetSize.Call(curProc, ^uintptr(0), ^uintptr(0))
 		}
 	}()
 
