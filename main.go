@@ -164,19 +164,66 @@ func getInitScript(ua string) string {
 			} catch (e) {}
 		})();
 
-		// Track clicked document filenames for preview and download
+		function isDocumentFileName(name) {
+			if (!name) return false;
+			var ext = name.toLowerCase();
+			return ext.endsWith('.pdf') || ext.endsWith('.doc') || ext.endsWith('.docx') ||
+				   ext.endsWith('.xls') || ext.endsWith('.xlsx') || ext.endsWith('.ppt') ||
+				   ext.endsWith('.pptx') || ext.endsWith('.txt') || ext.endsWith('.csv') ||
+				   ext.endsWith('.rtf');
+		}
+
+		// Dismiss WhatsApp Web's internal stuck viewer overlay
+		function dismissStuckViewer() {
+			var attempts = 0;
+			var dismissTimer = setInterval(function() {
+				attempts++;
+				var viewer = document.querySelector('[data-testid="media-viewer"]');
+				if (!viewer || attempts > 8) {
+					clearInterval(dismissTimer);
+					return;
+				}
+				var closeSelectors = [
+					'button[data-testid="x-viewer"]',
+					'[data-icon="x-viewer"]',
+					'[data-icon="back"]',
+					'button[aria-label="Tutup"]',
+					'button[aria-label="Close"]',
+					'button[aria-label="Tutup pratinjau"]',
+					'button[title="Tutup"]',
+					'button[title="Close"]',
+					'[data-testid="btn-close"]'
+				];
+				for (var i = 0; i < closeSelectors.length; i++) {
+					try {
+						var btn = viewer.querySelector(closeSelectors[i]) || document.querySelector(closeSelectors[i]);
+						if (btn) {
+							btn.click();
+							break;
+						}
+					} catch (e) {}
+				}
+				var escEvt = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true });
+				document.dispatchEvent(escEvt);
+				window.dispatchEvent(escEvt);
+			}, 200);
+		}
+		window.dismissStuckViewer = dismissStuckViewer;
+
+		// Track clicked document filenames with robust regex matching
 		var lastClickedDocName = 'dokumen.pdf';
 		document.addEventListener('click', function(e) {
 			var el = e.target;
 			while (el && el !== document.body) {
 				var title = el.getAttribute('title') || '';
-				if (title.toLowerCase().endsWith('.pdf') || title.toLowerCase().endsWith('.doc') || title.toLowerCase().endsWith('.docx') || title.toLowerCase().endsWith('.xls') || title.toLowerCase().endsWith('.xlsx')) {
-					lastClickedDocName = title;
+				if (title.match(/\.(pdf|docx?|xlsx?|pptx?|txt)/i)) {
+					lastClickedDocName = title.trim();
 					break;
 				}
-				var text = (el.innerText || '').trim();
-				if (text.toLowerCase().endsWith('.pdf')) {
-					lastClickedDocName = text;
+				var text = el.innerText || '';
+				var match = text.match(/([a-zA-Z0-9_\-\.\s\(\)]+\.(pdf|docx?|xlsx?|pptx?|txt))/i);
+				if (match && match[1]) {
+					lastClickedDocName = match[1].trim();
 					break;
 				}
 				el = el.parentElement;
@@ -186,7 +233,7 @@ func getInitScript(ua string) string {
 		// Intercept external link clicks to open in default browser
 		document.addEventListener('click', function(e) {
 			var target = e.target;
-			while (target && target.tagName !== 'A') {
+			while (target && target !== document.body && target.tagName !== 'A') {
 				target = target.parentElement;
 			}
 			if (target && target.tagName === 'A' && target.href) {
@@ -204,16 +251,16 @@ func getInitScript(ua string) string {
 		}, true);
 
 		// In-App Document Preview Modal Overlay
-		function showInAppDocModal(filename, dataUri) {
+		function showInAppDocModal(filename, blobUrl, savedPath, dataUri) {
 			var existing = document.getElementById('wa-doc-modal-overlay');
 			if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
 
 			var overlay = document.createElement('div');
 			overlay.id = 'wa-doc-modal-overlay';
-			overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:99999999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+			overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:99999999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;animation:waFadeIn 0.2s ease;';
 
 			var modal = document.createElement('div');
-			modal.style.cssText = 'width:92%;max-width:960px;height:90%;background:#111b21;border:1px solid rgba(255,255,255,0.12);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 16px 40px rgba(0,0,0,0.8);';
+			modal.style.cssText = 'width:94%;max-width:1020px;height:92%;background:#111b21;border:1px solid rgba(255,255,255,0.14);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.85);';
 
 			// Header
 			var header = document.createElement('div');
@@ -221,36 +268,27 @@ func getInitScript(ua string) string {
 			header.innerHTML = '' +
 				'<div style="display:flex;align-items:center;gap:10px;min-width:0;">' +
 				'  <span style="font-size:20px;">📄</span>' +
-				'  <strong style="font-size:13.5px;color:#e9edef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:400px;" title="' + filename + '">' + filename + '</strong>' +
+				'  <strong style="font-size:13.5px;color:#e9edef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:450px;" title="' + filename + '">' + filename + '</strong>' +
 				'</div>' +
 				'<div style="display:flex;align-items:center;gap:8px;">' +
-				'  <button id="wa-btn-open-preview" style="background:#00a884;color:#111b21;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">' +
-				'    📂 Buka di Aplikasi Sistem' +
+				'  <button id="wa-btn-open-preview" style="background:#00a884;color:#111b21;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;box-shadow:0 2px 6px rgba(0,168,132,0.3);">' +
+				'    📂 Buka di Aplikasi Sistem (Preview)' +
 				'  </button>' +
 				'  <button id="wa-btn-save-doc" style="background:#2a3942;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">' +
-				'    💾 Simpan' +
+				'    💾 Unduh' +
 				'  </button>' +
-				'  <button id="wa-btn-close-doc" style="background:transparent;border:none;color:#8696a0;cursor:pointer;font-size:18px;padding:4px 8px;border-radius:6px;line-height:1;">✕</button>' +
+				'  <button id="wa-btn-close-doc" style="background:transparent;border:none;color:#8696a0;cursor:pointer;font-size:20px;padding:4px 8px;border-radius:6px;line-height:1;">✕</button>' +
 				'</div>';
 			modal.appendChild(header);
 
-			// Body
+			// Body: iframe with PDF blobUrl/dataUri
 			var body = document.createElement('div');
-			body.style.cssText = 'flex:1;width:100%;height:100%;position:relative;background:#0b141a;overflow:hidden;display:flex;align-items:center;justify-content:center;';
+			body.style.cssText = 'flex:1;width:100%;height:100%;position:relative;background:#525659;overflow:hidden;display:flex;align-items:center;justify-content:center;';
 
-			var objectEl = document.createElement('object');
-			objectEl.data = dataUri;
-			objectEl.type = 'application/pdf';
-			objectEl.style.cssText = 'width:100%;height:100%;border:none;';
-			objectEl.innerHTML = '' +
-				'<div style="text-align:center;padding:40px;color:#8696a0;display:flex;flex-direction:column;align-items:center;gap:16px;">' +
-				'  <span style="font-size:48px;">📄</span>' +
-				'  <div style="font-size:14px;color:#e9edef;font-weight:500;">Dokumen siap dibuka: <strong>' + filename + '</strong></div>' +
-				'  <button id="wa-btn-fallback-open" style="background:#00a884;color:#111b21;border:none;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">' +
-				'    Buka Dokumen di Aplikasi Sistem' +
-				'  </button>' +
-				'</div>';
-			body.appendChild(objectEl);
+			var frameEl = document.createElement('iframe');
+			frameEl.src = blobUrl || dataUri;
+			frameEl.style.cssText = 'width:100%;height:100%;border:none;background:#ffffff;';
+			body.appendChild(frameEl);
 			modal.appendChild(body);
 
 			overlay.appendChild(modal);
@@ -266,25 +304,20 @@ func getInitScript(ua string) string {
 			};
 
 			document.getElementById('wa-btn-open-preview').onclick = function() {
-				if (window.previewDocumentNative) {
-					window.previewDocumentNative(filename, dataUri);
+				if (savedPath && window.openFileNative) {
+					window.openFileNative(savedPath);
+				} else if (window.previewDocumentNative) {
+					window.previewDocumentNative(filename, dataUri || blobUrl);
 				}
 			};
 
-			var fbBtn = document.getElementById('wa-btn-fallback-open');
-			if (fbBtn) {
-				fbBtn.onclick = function() {
-					if (window.previewDocumentNative) {
-						window.previewDocumentNative(filename, dataUri);
-					}
-				};
-			}
-
 			document.getElementById('wa-btn-save-doc').onclick = function() {
-				if (window.saveDownloadedFileNative) {
+				if (dataUri && window.saveDownloadedFileNative) {
 					window.saveDownloadedFileNative(filename, dataUri).then(function(p) {
 						if (p) showFloatingToast('💾 Berhasil disimpan: ' + filename);
 					});
+				} else if (savedPath) {
+					showFloatingToast('💾 Berkas sudah tersimpan di: ' + savedPath);
 				}
 			};
 
@@ -296,34 +329,60 @@ func getInitScript(ua string) string {
 			};
 			window.addEventListener('keydown', onEsc);
 		}
+		window.showInAppDocModal = showInAppDocModal;
+
+		// Intercept URL.createObjectURL to catch decrypted PDF/document blobs directly
+		var origCreateObjectURL = URL.createObjectURL;
+		URL.createObjectURL = function(blob) {
+			var url = origCreateObjectURL.apply(this, arguments);
+			try {
+				if (blob && (blob.type === 'application/pdf' || (blob.type && blob.type.indexOf('pdf') >= 0))) {
+					var name = lastClickedDocName || 'dokumen.pdf';
+					if (!name.toLowerCase().endsWith('.pdf') && !name.includes('.')) name += '.pdf';
+					var reader = new FileReader();
+					reader.onloadend = function() {
+						var base64data = reader.result;
+						if (window.saveDownloadedFileNative) {
+							window.saveDownloadedFileNative(name, base64data).then(function(savedPath) {
+								showInAppDocModal(name, url, savedPath, base64data);
+								dismissStuckViewer();
+								showFloatingToast('📄 Pratinjau dokumen: ' + name);
+							});
+						} else {
+							showInAppDocModal(name, url, '', base64data);
+							dismissStuckViewer();
+						}
+					};
+					reader.readAsDataURL(blob);
+				}
+			} catch (e) {}
+			return url;
+		};
 
 		function handleBlobDocumentPreview(blobUrl) {
-			var filename = lastClickedDocName || 'dokumen.pdf';
-			if (!filename.toLowerCase().endsWith('.pdf') && !filename.includes('.')) {
-				filename += '.pdf';
-			}
-			showFloatingToast('📄 Membuka pratinjau: ' + filename + '...');
-
+			var name = lastClickedDocName || 'dokumen.pdf';
+			if (!name.toLowerCase().endsWith('.pdf') && !name.includes('.')) name += '.pdf';
 			fetch(blobUrl)
-				.then(function(res) {
-					return res.blob();
-				})
+				.then(function(res) { return res.blob(); })
 				.then(function(blob) {
 					var reader = new FileReader();
 					reader.onloadend = function() {
-						var dataUri = reader.result;
-						// Open natively with system default viewer
-						if (window.previewDocumentNative) {
-							window.previewDocumentNative(filename, dataUri);
+						var base64data = reader.result;
+						if (window.saveDownloadedFileNative) {
+							window.saveDownloadedFileNative(name, base64data).then(function(savedPath) {
+								showInAppDocModal(name, blobUrl, savedPath, base64data);
+								dismissStuckViewer();
+								showFloatingToast('📄 Pratinjau dokumen: ' + name);
+							});
+						} else {
+							showInAppDocModal(name, blobUrl, '', base64data);
+							dismissStuckViewer();
 						}
-						// Also display in-app modal overlay
-						showInAppDocModal(filename, dataUri);
 					};
 					reader.readAsDataURL(blob);
 				})
 				.catch(function(err) {
-					console.error('Error fetching document blob:', err);
-					showFloatingToast('❌ Gagal memuat pratinjau berkas.');
+					console.error('Error handling blob preview:', err);
 				});
 		}
 
@@ -707,7 +766,7 @@ func getInitScript(ua string) string {
 						if (res && res.available) {
 							window.showUpdateBanner(res.latest_version, res.release_title, res.download_url);
 						} else {
-							var cur = (res && res.current_version) ? res.current_version : '1.5.1';
+							var cur = (res && res.current_version) ? res.current_version : '1.5.2';
 							showFloatingToast('✅ WhatsApp Desk sudah versi terbaru (v' + cur + ')');
 						}
 						return res;
@@ -763,32 +822,6 @@ func getInitScript(ua string) string {
 					   ext.endsWith('.rtf');
 			}
 
-			function dismissStuckViewer() {
-				setTimeout(function() {
-					var closeSelectors = [
-						'button[data-testid="x-viewer"]',
-						'[data-icon="x-viewer"]',
-						'button[aria-label="Tutup"]',
-						'button[aria-label="Close"]',
-						'button[aria-label="Tutup pratinjau"]',
-						'button[title="Tutup"]',
-						'button[title="Close"]',
-						'[data-testid="btn-close"]'
-					];
-					for (var i = 0; i < closeSelectors.length; i++) {
-						try {
-							var btn = document.querySelector(closeSelectors[i]);
-							if (btn) {
-								btn.click();
-								return;
-							}
-						} catch (e) {}
-					}
-					var escEvt = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true });
-					document.dispatchEvent(escEvt);
-				}, 400);
-			}
-
 			function captureDownload(href, filename, shouldAutoOpen) {
 				if (!filename) filename = 'whatsapp_file';
 				var isDoc = isDocumentFileName(filename);
@@ -809,13 +842,9 @@ func getInitScript(ua string) string {
 								window.saveDownloadedFileNative(filename, base64data).then(function(savedPath) {
 									if (savedPath) {
 										if (shouldAutoOpen) {
-											if (window.openFileNative) {
-												window.openFileNative(savedPath);
-											} else if (window.previewDocumentNative) {
-												window.previewDocumentNative(filename, base64data);
-											}
+											showInAppDocModal(filename, href, savedPath, base64data);
+											if (window.dismissStuckViewer) window.dismissStuckViewer();
 											showFloatingToast('📄 Pratinjau dibuka: ' + filename);
-											dismissStuckViewer();
 										} else {
 											showFloatingToast('💾 Berhasil disimpan: ' + filename);
 										}
@@ -873,15 +902,17 @@ func getInitScript(ua string) string {
 				var foundName = '';
 				while (el && el !== document.body) {
 					var title = el.getAttribute('title') || '';
-					if (isDocumentFileName(title)) {
+					var m1 = title.match(/([a-zA-Z0-9_\-\.\s\(\)]+\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf))/i);
+					if (m1 && m1[1]) {
 						clickedDoc = true;
-						foundName = title;
+						foundName = m1[1].trim();
 						break;
 					}
-					var text = (el.innerText || '').trim();
-					if (isDocumentFileName(text)) {
+					var text = el.innerText || '';
+					var m2 = text.match(/([a-zA-Z0-9_\-\.\s\(\)]+\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf))/i);
+					if (m2 && m2[1]) {
 						clickedDoc = true;
-						foundName = text;
+						foundName = m2[1].trim();
 						break;
 					}
 					el = el.parentElement;
@@ -893,7 +924,7 @@ func getInitScript(ua string) string {
 					var checkCount = 0;
 					var checkTimer = setInterval(function() {
 						checkCount++;
-						if (checkCount > 25) {
+						if (checkCount > 30) {
 							clearInterval(checkTimer);
 							return;
 						}
@@ -909,6 +940,25 @@ func getInitScript(ua string) string {
 					}, 200);
 				}
 			}, true);
+
+			// Hook 4: MutationObserver to auto-dismiss stuck media viewer and trigger download/preview
+			var viewerObserver = new MutationObserver(function() {
+				var viewer = document.querySelector('[data-testid="media-viewer"]');
+				if (viewer && !document.getElementById('wa-doc-modal-overlay')) {
+					var dlBtn = viewer.querySelector('[data-testid="download"], [data-icon="download"], button[title*="Unduh"], button[title*="Download"], button[aria-label*="Unduh"], button[aria-label*="Download"]');
+					var spinner = viewer.querySelector('[data-icon="tail-spin"], [data-testid="spinner"], div[role="status"]');
+					if (dlBtn && (spinner || (viewer.innerText && viewer.innerText.indexOf('.pdf') >= 0))) {
+						setTimeout(function() {
+							var v = document.querySelector('[data-testid="media-viewer"]');
+							if (v && !document.getElementById('wa-doc-modal-overlay')) {
+								var btn = v.querySelector('[data-testid="download"], [data-icon="download"]');
+								if (btn) btn.click();
+							}
+						}, 300);
+					}
+				}
+			});
+			viewerObserver.observe(document.body, { childList: true, subtree: true });
 		})();
 
 		// Theme Manager, In-Flow Header Toolbar Button & Control Center Modal
@@ -1136,7 +1186,7 @@ func getInitScript(ua string) string {
 					'  </div>' +
 					'  <div>' +
 					'    <h3 id="wa-modal-title" style="margin:0;font-size:15px;font-weight:600;">WhatsApp Desk</h3>' +
-					'    <span id="wa-modal-sub" style="font-size:11px;">Klien Ringan Cepat • Versi 1.5.1</span>' +
+					'    <span id="wa-modal-sub" style="font-size:11px;">Klien Ringan Cepat • Versi 1.5.2</span>' +
 					'  </div>' +
 					'</div>' +
 					'<button id="wa-settings-close-x" style="background:transparent;border:none;cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;">✕</button>';
