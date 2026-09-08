@@ -245,34 +245,40 @@ func getInitScript(ua string) string {
 			var dismissTimer = setInterval(function() {
 				attempts++;
 				var viewer = document.querySelector('[data-testid="media-viewer"]');
-				if (!viewer || attempts > 8) {
+				if (!viewer || attempts > 15) {
 					clearInterval(dismissTimer);
 					return;
 				}
 				var closeSelectors = [
 					'button[data-testid="x-viewer"]',
+					'[data-testid="x-viewer"]',
 					'[data-icon="x-viewer"]',
+					'[data-icon="x"]',
 					'[data-icon="back"]',
-					'button[aria-label="Tutup"]',
-					'button[aria-label="Close"]',
-					'button[aria-label="Tutup pratinjau"]',
-					'button[title="Tutup"]',
-					'button[title="Close"]',
-					'[data-testid="btn-close"]'
+					'button[aria-label*="Close" i]',
+					'button[aria-label*="Tutup" i]',
+					'[role="button"][aria-label*="Close" i]',
+					'[role="button"][aria-label*="Tutup" i]',
+					'button[title*="Close" i]',
+					'button[title*="Tutup" i]',
+					'[data-testid="btn-close"]',
+					'[data-testid="media-viewer-close"]'
 				];
 				for (var i = 0; i < closeSelectors.length; i++) {
 					try {
-						var btn = viewer.querySelector(closeSelectors[i]) || document.querySelector(closeSelectors[i]);
-						if (btn) {
+						var el = viewer.querySelector(closeSelectors[i]) || document.querySelector(closeSelectors[i]);
+						if (el) {
+							var btn = el.closest('button, [role="button"]') || el;
 							btn.click();
 							break;
 						}
 					} catch (e) {}
 				}
-				var escEvt = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true });
+				var escEvt = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true });
+				try { viewer.dispatchEvent(escEvt); } catch (e) {}
 				document.dispatchEvent(escEvt);
 				window.dispatchEvent(escEvt);
-			}, 200);
+			}, 150);
 		}
 		window.dismissStuckViewer = dismissStuckViewer;
 
@@ -587,19 +593,13 @@ func getInitScript(ua string) string {
 			var existing = document.getElementById('wa-doc-modal-overlay');
 			if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
 
+			// Immediately dismiss WhatsApp Web's stuck background viewer
+			if (window.dismissStuckViewer) window.dismissStuckViewer();
+
 			var ext = (filename && filename.indexOf('.') !== -1 ? filename.split('.').pop() : '').toLowerCase();
 			var isPdf = ext === 'pdf';
 			var isExcel = ext === 'xlsx' || ext === 'xls' || ext === 'csv';
 			var isWord = ext === 'docx' || ext === 'doc' || ext === 'rtf' || ext === 'txt';
-
-			// On macOS, PDF can be previewed natively via PDFKit if available
-			if (isPdf && savedPath && window.showPDFPreviewNative) {
-				window.showPDFPreviewNative(savedPath);
-				if (ownedBlobUrl) {
-					try { URL.revokeObjectURL(ownedBlobUrl); } catch (e) {}
-				}
-				return;
-			}
 
 			var docIcon = '📄';
 			var openBtnText = '📂 Open in System App';
@@ -649,7 +649,9 @@ func getInitScript(ua string) string {
 			modal.appendChild(body);
 
 			function triggerOpenSystem() {
-				if (savedPath && window.openFileNative) {
+				if (savedPath && window.showPDFPreviewNative && isPdf) {
+					window.showPDFPreviewNative(savedPath);
+				} else if (savedPath && window.openFileNative) {
 					window.openFileNative(savedPath);
 				} else if (window.previewDocumentNative) {
 					window.previewDocumentNative(filename, dataUri || blobUrl);
@@ -674,10 +676,41 @@ func getInitScript(ua string) string {
 
 			// Render content according to file type
 			if (isPdf) {
-				var frameEl = document.createElement('iframe');
-				frameEl.src = blobUrl || dataUri;
-				frameEl.style.cssText = 'width:100%;height:100%;border:none;background:#ffffff;';
-				body.appendChild(frameEl);
+				var pdfSrc = ownedBlobUrl || blobUrl || '';
+				if ((!pdfSrc || pdfSrc.indexOf('blob:') !== 0) && dataUri && dataUri.indexOf('data:application/pdf') === 0) {
+					try {
+						var rawB64 = dataUri.split(',')[1] || '';
+						var binStr = atob(rawB64);
+						var len = binStr.length;
+						var u8 = new Uint8Array(len);
+						for (var bi = 0; bi < len; bi++) {
+							u8[bi] = binStr.charCodeAt(bi);
+						}
+						var pBlob = new Blob([u8], { type: 'application/pdf' });
+						pdfSrc = URL.createObjectURL(pBlob);
+						if (!ownedBlobUrl) ownedBlobUrl = pdfSrc;
+					} catch (e) {
+						pdfSrc = dataUri;
+					}
+				}
+				if (!pdfSrc) pdfSrc = dataUri || '';
+
+				if (pdfSrc) {
+					var obj = document.createElement('object');
+					obj.data = pdfSrc;
+					obj.type = 'application/pdf';
+					obj.style.cssText = 'width:100%;height:100%;border:none;flex:1;';
+
+					var ifr = document.createElement('iframe');
+					ifr.src = pdfSrc;
+					ifr.style.cssText = 'width:100%;height:100%;border:none;background:#ffffff;';
+					ifr.title = filename;
+
+					obj.appendChild(ifr);
+					body.appendChild(obj);
+				} else {
+					renderCardFallback();
+				}
 			} else if (ext === 'csv') {
 				try {
 					var rawBase64 = (dataUri || '').split(',')[1] || '';
