@@ -81,8 +81,9 @@ Description: Lightweight WhatsApp Desktop Client
 EOF
 
     dpkg-deb --build "${DEB_DIR}" "whatsapp-desk_${VERSION}_amd64.deb"
+    cp "whatsapp-desk_${VERSION}_amd64.deb" "WhatsApp-Desk-Linux-amd64.deb"
     rm -rf "${DEB_DIR}"
-    echo "Created: whatsapp-desk_${VERSION}_amd64.deb"
+    echo "Created: whatsapp-desk_${VERSION}_amd64.deb and WhatsApp-Desk-Linux-amd64.deb"
 fi
 
 echo "Done! Linux artifacts ready in ${OUTPUT_DIR} and ${TAR_BUNDLE}."

@@ -1,11 +1,26 @@
 package main
 
+import "runtime"
+
 const (
 	windowWidth  = 1100
 	windowHeight = 750
 )
 
 func getInitScript(ua string) string {
+	clientPlatform := "macOS"
+	clientPlatformVersion := "15.0.0"
+	clientArch := "arm"
+	if runtime.GOOS == "windows" {
+		clientPlatform = "Windows"
+		clientPlatformVersion = "10.0.0"
+		clientArch = "x86"
+	} else if runtime.GOOS == "linux" {
+		clientPlatform = "Linux"
+		clientPlatformVersion = "6.8.0"
+		clientArch = "x86"
+	}
+
 	return `
 		// UserAgent and platform override to Google Chrome
 		Object.defineProperty(navigator, 'userAgent', {
@@ -41,10 +56,10 @@ func getInitScript(ua string) string {
 						{ brand: 'Chromium', version: '133' }
 					],
 					mobile: false,
-					platform: 'macOS',
+					platform: '` + clientPlatform + `',
 					getHighEntropyValues: function() {
 						return Promise.resolve({
-							architecture: 'arm',
+							architecture: '` + clientArch + `',
 							bitness: '64',
 							brands: [
 								{ brand: 'Not(A:Brand', version: '99' },
@@ -58,8 +73,8 @@ func getInitScript(ua string) string {
 							],
 							mobile: false,
 							model: '',
-							platform: 'macOS',
-							platformVersion: '15.0.0',
+							platform: '` + clientPlatform + `',
+							platformVersion: '` + clientPlatformVersion + `',
 							uaFullVersion: '133.0.0.0'
 						});
 					}
@@ -181,6 +196,23 @@ func getInitScript(ua string) string {
 					}
 				}, 60000);
 			}
+		})();
+
+		// Debounced window resize persistence
+		(function() {
+			var resizeTimer = null;
+			window.addEventListener('resize', function() {
+				clearTimeout(resizeTimer);
+				resizeTimer = setTimeout(function() {
+					if (window.saveWindowStateNative) {
+						var w = window.outerWidth || window.innerWidth;
+						var h = window.outerHeight || window.innerHeight;
+						if (w && h) {
+							window.saveWindowStateNative(Math.round(w), Math.round(h));
+						}
+					}
+				}, 500);
+			});
 		})();
 
 		// Floating HUD Toast for User Feedback

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -122,8 +123,15 @@ func loadWindowState(dir string) *WindowState {
 	return &state
 }
 
+var lastSavedStateLinux *WindowState
+
 func saveWindowState(dir string, width, height int) {
 	if width >= 450 && height >= 320 {
+		if lastSavedStateLinux != nil &&
+			lastSavedStateLinux.Width == float64(width) &&
+			lastSavedStateLinux.Height == float64(height) {
+			return // Avoid redundant disk writes
+		}
 		state := WindowState{
 			Width:  float64(width),
 			Height: float64(height),
@@ -131,18 +139,36 @@ func saveWindowState(dir string, width, height int) {
 		data, err := json.MarshalIndent(state, "", "  ")
 		if err == nil {
 			_ = os.WriteFile(filepath.Join(dir, "window_state.json"), data, 0644)
+			lastSavedStateLinux = &state
 		}
 	}
 }
 
 func runApp() {
-	_, isSingle := checkSingleInstance()
+	lockFile, isSingle := checkSingleInstance()
 	if !isSingle {
 		fmt.Println("WhatsApp Desk is already running.")
 		os.Exit(0)
 	}
+	if lockFile != nil {
+		defer lockFile.Close()
+	}
 
 	userDataDir := getUserDataDir()
+
+	// Hardware acceleration & GPU rendering optimization for smooth scrolling
+	if os.Getenv("WEBKIT_FORCE_COMPOSITING_MODE") == "" {
+		_ = os.Setenv("WEBKIT_FORCE_COMPOSITING_MODE", "1")
+	}
+
+	// Restore window state if previously saved
+	initialWidth := windowWidth
+	initialHeight := windowHeight
+	state := loadWindowState(userDataDir)
+	if state != nil {
+		initialWidth = int(state.Width)
+		initialHeight = int(state.Height)
+	}
 
 	w := webview.New(false)
 	if w == nil {
@@ -151,7 +177,21 @@ func runApp() {
 	defer w.Destroy()
 
 	w.SetTitle(windowTitle)
-	w.SetSize(windowWidth, windowHeight, webview.HintNone)
+	w.SetSize(initialWidth, initialHeight, webview.HintNone)
+
+	// Periodic Go runtime memory cleanup (every 60s)
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			debug.FreeOSMemory()
+		}
+	}()
+
+	// Bind window state saver from JS resize events
+	_ = w.Bind("saveWindowStateNative", func(width, height int) {
+		saveWindowState(userDataDir, width, height)
+	})
 
 	// Bind native notification bridge
 	_ = w.Bind("sendNativeNotification", func(title, body string) {
@@ -260,6 +300,6 @@ func runApp() {
 		}
 	}()
 
-	defer saveWindowState(userDataDir, windowWidth, windowHeight)
+	defer saveWindowState(userDataDir, initialWidth, initialHeight)
 	w.Run()
 }
