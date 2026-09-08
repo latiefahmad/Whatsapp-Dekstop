@@ -10,18 +10,18 @@ Unlike official WhatsApp Desktop which bundles a heavy Electron runtime, WhatsAp
 
 ---
 
-## 📥 Download (Release v1.5.3)
+## 📥 Download (Release v1.5.4)
 
 Ready-to-use binaries and installers are available directly from the official release links below:
 
 | Operating System | Installer / Binary | Architecture | Format | Size |
 | :--- | :--- | :--- | :--- | :--- |
-| **macOS (DMG)** | [📥 **Download WhatsApp-Desk-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg) | Universal (Apple Silicon & Intel) | Apple Disk Image (.dmg) | ~3.7 MB |
-| **macOS (ZIP)** | [📥 **Download WhatsApp-Desk-macOS-Universal.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.zip) | Universal (Apple Silicon & Intel) | Portable App (.zip) | ~2.9 MB |
-| **Windows (ZIP)** | [📥 **Download WhatsApp-Desk-Windows-x64.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64.zip) | 64-bit (x64) | Complete Portable Bundle (.zip) | ~6.9 MB |
-| **Windows (EXE)** | [📥 **Download WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe) | 64-bit (x64) | Standalone Executable (.exe) | ~8.5 MB |
-| **Linux (DEB)** | [📥 **Download WhatsApp-Desk-Linux-amd64.deb**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-amd64.deb) | 64-bit (x86_64) | Debian / Ubuntu Package (.deb) | ~3 MB |
-| **Linux (Tarball)** | [📥 **Download WhatsApp-Desk-Linux-x64.tar.gz**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-x64.tar.gz) | 64-bit (x86_64) | Portable Tarball (.tar.gz) | ~3 MB |
+| **macOS (DMG)** | [📥 **Download WhatsApp-Desk-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg) | Universal (Apple Silicon & Intel) | Apple Disk Image (.dmg) | ~6.5 MB |
+| **macOS (ZIP)** | [📥 **Download WhatsApp-Desk-macOS-Universal.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.zip) | Universal (Apple Silicon & Intel) | Portable App (.zip) | ~5.6 MB |
+| **Windows (ZIP)** | [📥 **Download WhatsApp-Desk-Windows-x64.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64.zip) | 64-bit (x64) | Complete Portable Bundle (.zip) | ~5.3 MB |
+| **Windows (EXE)** | [📥 **Download WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe) | 64-bit (x64) | Standalone Executable (.exe) | ~6.4 MB |
+| **Linux (DEB)** | [📥 **Download WhatsApp-Desk-Linux-amd64.deb**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-amd64.deb) | 64-bit (x86_64) | Debian / Ubuntu Package (.deb) | ~2.2 MB |
+| **Linux (Tarball)** | [📥 **Download WhatsApp-Desk-Linux-x64.tar.gz**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-x64.tar.gz) | 64-bit (x86_64) | Portable Tarball (.tar.gz) | ~2.8 MB |
 
 > Full release history, release notes, and older binary archives are accessible on the [GitHub Releases](https://github.com/vianziro/Whatsapp-Dekstop/releases) page.
 
@@ -192,7 +192,13 @@ chmod +x whatsapp-desk
 
 ## 📋 Changelog
 
-- **v1.5.3 (Latest)**:
+- **v1.5.4 (Latest)**:
+  - 📄 **Reliable macOS PDF Preview**: Routes WhatsApp document downloads into the native PDFKit viewer instead of the unsupported WKWebView PDF plugin path.
+  - ⬇️ **Updated Viewer Toolbar Detection**: Detects the currently visible download control without depending on legacy WhatsApp `data-testid` attributes.
+  - ↩️ **Close Returns to Chat**: Closing the native PDF preview also dismisses the WhatsApp document viewer and restores the active chat.
+  - 🧠 **Safer Viewer Lifecycle**: Prevents repeated synthetic Escape events and releases temporary document URLs after preview.
+
+- **v1.5.3 (Deprecated)**:
   - 📄 **Multi-Format In-App Document Preview**: Instant preview modal for **PDF**, **Excel** (`.xlsx`, `.xls`, `.csv`), **Word** (`.docx`, `.doc`), and **Text** (`.txt`) directly in chat with native app opening support.
   - 🛠️ **Media Viewer & ✕ Close Button Fix**: Resolved an issue where clicking the close button or toolbar buttons in WhatsApp Web's media viewer failed to return to the active chat screen.
   - 🪟 **Windows 10 & 11 Black Screen Fix**: Configured Windows Job Object with *Silent Breakaway* permission (`JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK`), eliminated startup process termination conflicts, and optimized Chromium command-line flags.
@@ -218,7 +224,7 @@ chmod +x whatsapp-desk
 
 ## 📦 Official Binary Releases
 
-For optimal performance and ease of use, download the precompiled official binaries from the [Download Table](#-download-release-v153) above. All releases are tested for macOS (Apple Silicon & Intel), Windows 10/11, and Linux.
+For optimal performance and ease of use, download the precompiled official binaries from the [Download Table](#-download-release-v154) above. Release artifacts are built and package-verified for macOS (Apple Silicon & Intel), Windows 10/11, and Linux.
 
 ---
 

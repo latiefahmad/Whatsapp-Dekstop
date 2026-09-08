@@ -295,6 +295,47 @@ func getInitScript(ua string) string {
 			}
 		}, true);
 
+		window.closeDocumentViewerAfterNativePreview = function() {
+			var selectors = [
+				'button[data-testid="x-viewer"]', '[data-testid="x-viewer"]',
+				'[data-icon="x-viewer"]', '[data-icon="x"]', '[data-icon="back"]',
+				'button[aria-label*="Close" i]', 'button[aria-label*="Tutup" i]',
+				'[role="button"][aria-label*="Close" i]', '[role="button"][aria-label*="Tutup" i]',
+				'button[title*="Close" i]', 'button[title*="Tutup" i]'
+			].join(',');
+			var candidates = document.querySelectorAll(selectors);
+			var best = null;
+			var bestScore = -1;
+			for (var i = 0; i < candidates.length; i++) {
+				var raw = candidates[i];
+				if (raw.closest && raw.closest('#wa-doc-modal-overlay')) continue;
+				var control = (raw.closest && raw.closest('button, [role="button"]')) || raw;
+				var rect = control.getBoundingClientRect();
+				if (rect.width < 8 || rect.height < 8 || rect.bottom <= 0 || rect.right <= 0 ||
+					rect.top >= window.innerHeight || rect.left >= window.innerWidth) continue;
+				var style = window.getComputedStyle(control);
+				if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) continue;
+				var score = 0;
+				if (rect.top < window.innerHeight * 0.3) score += 4;
+				if (rect.left > window.innerWidth * 0.7) score += 4;
+				if (control.closest && control.closest('[role="dialog"], [data-testid*="viewer"], header, [role="toolbar"]')) score += 5;
+				if (score > bestScore) { best = control; bestScore = score; }
+			}
+
+			if (best && bestScore >= 8) {
+				best.click();
+			} else {
+				var esc = new KeyboardEvent('keydown', {
+					key: 'Escape', code: 'Escape', keyCode: 27, which: 27,
+					bubbles: true, cancelable: true
+				});
+				document.dispatchEvent(esc);
+				window.dispatchEvent(esc);
+			}
+			lastDocumentIntentAt = 0;
+			lastClickedDocName = '';
+		};
+
 		// Handle explicit user clicks on WhatsApp Web's Media Viewer ✕ close button
 		// Guarantees immediate exit to chat view even if internal viewer state is desynced
 		document.addEventListener('click', function(e) {
@@ -1256,7 +1297,7 @@ func getInitScript(ua string) string {
 						if (res && res.available) {
 							window.showUpdateBanner(res.latest_version, res.release_title, res.download_url);
 						} else {
-							var cur = (res && res.current_version) ? res.current_version : '1.5.3';
+							var cur = (res && res.current_version) ? res.current_version : '1.5.4';
 							showFloatingToast('✅ WhatsApp Desk is up to date (v' + cur + ')');
 						}
 						return res;
@@ -1745,7 +1786,7 @@ func getInitScript(ua string) string {
 					'  </div>' +
 					'  <div>' +
 					'    <h3 id="wa-modal-title" style="margin:0;font-size:15px;font-weight:600;">WhatsApp Desk</h3>' +
-					'    <span id="wa-modal-sub" style="font-size:11px;">Application settings · version 1.5.3</span>' +
+					'    <span id="wa-modal-sub" style="font-size:11px;">Application settings · version 1.5.4</span>' +
 					'  </div>' +
 					'</div>' +
 					'<button id="wa-settings-close-x" style="background:transparent;border:none;cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;">✕</button>';
