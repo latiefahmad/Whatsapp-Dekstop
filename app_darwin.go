@@ -75,6 +75,20 @@ static void triggerNativeMemoryPurge(void) {
 - (void)webView:(WKWebView *)webView requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin initiatedByFrame:(WKFrameInfo *)frame type:(WKMediaCaptureType)type decisionHandler:(void (^)(WKPermissionDecision decision))decisionHandler {
     decisionHandler(WKPermissionDecisionGrant);
 }
+- (WKWebView *)webView:(WKWebView *)webView createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)navigationAction windowFeatures:(WKWindowFeatures *)windowFeatures {
+    if (!navigationAction.targetFrame.isMainFrame) {
+        NSURL *url = navigationAction.request.URL;
+        if (url) {
+            NSString *scheme = [[url scheme] lowercaseString];
+            if ([scheme isEqualToString:@"blob"] || [scheme isEqualToString:@"data"] || [[url host] containsString:@"whatsapp."]) {
+                [webView loadRequest:navigationAction.request];
+            } else {
+                [[NSWorkspace sharedWorkspace] openURL:url];
+            }
+        }
+    }
+    return nil;
+}
 @end
 
 static WhatsAppAppDelegate* g_appDelegate = nil;

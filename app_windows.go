@@ -169,8 +169,6 @@ func initWindowsProcessProtection() {
 		"--disable-sync",
 		"--renderer-process-limit=1",
 		"--disable-site-isolation-trials",
-		"--enable-low-end-device-mode",
-		"--disable-extensions",
 		"--disable-speech-api",
 	}
 	_ = os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", strings.Join(browserArgs, " "))

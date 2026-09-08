@@ -82,6 +82,48 @@ func getInitScript(ua string) string {
 			});
 		}
 
+		// Emulate navigator.pdfViewerEnabled & PDF MIME Types for In-Chat PDF Preview
+		try {
+			Object.defineProperty(navigator, 'pdfViewerEnabled', {
+				get: () => true,
+				configurable: true
+			});
+
+			if (!navigator.mimeTypes || !navigator.mimeTypes['application/pdf']) {
+				var pdfMime = {
+					type: 'application/pdf',
+					suffixes: 'pdf',
+					description: 'Portable Document Format',
+					enabledPlugin: {
+						name: 'Chrome PDF Viewer',
+						filename: 'internal-pdf-viewer',
+						description: 'Portable Document Format'
+					}
+				};
+				var mimeTypesList = [pdfMime];
+				mimeTypesList['application/pdf'] = pdfMime;
+				Object.defineProperty(navigator, 'mimeTypes', {
+					get: () => mimeTypesList,
+					configurable: true
+				});
+			}
+
+			if (!navigator.plugins || navigator.plugins.length === 0) {
+				var pdfPlugin = {
+					name: 'Chrome PDF Viewer',
+					filename: 'internal-pdf-viewer',
+					description: 'Portable Document Format',
+					length: 1
+				};
+				var pluginsList = [pdfPlugin];
+				pluginsList['Chrome PDF Viewer'] = pdfPlugin;
+				Object.defineProperty(navigator, 'plugins', {
+					get: () => pluginsList,
+					configurable: true
+				});
+			}
+		} catch (e) {}
+
 		// Native Notification Polyfill
 		(function() {
 			window.Notification = function(title, options) {
@@ -593,6 +635,10 @@ func getInitScript(ua string) string {
 						var downloadAttr = target.getAttribute('download');
 						var href = target.href || target.getAttribute('href');
 						if ((downloadAttr !== null || target.download) && href && (href.indexOf('blob:') === 0 || href.indexOf('data:') === 0)) {
+							// If click is inside a chat message container, let WhatsApp native preview open!
+							if (target.closest('[data-testid="msg-container"]') || target.closest('[role="button"]') || target.closest('div[title*="Preview"]') || target.closest('div[title*="Lihat"]')) {
+								return;
+							}
 							e.preventDefault();
 							e.stopPropagation();
 							var name = downloadAttr || target.download || 'whatsapp_media';
