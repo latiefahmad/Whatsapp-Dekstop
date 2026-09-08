@@ -27,6 +27,8 @@ type Chromium struct {
 	webResourceRequested  *iCoreWebView2WebResourceRequestedEventHandler
 	acceleratorKeyPressed *ICoreWebView2AcceleratorKeyPressedEventHandler
 	navigationCompleted   *ICoreWebView2NavigationCompletedEventHandler
+	trySuspendCompleted   *ICoreWebView2TrySuspendCompletedHandler
+	suspended             uintptr
 
 	environment *ICoreWebView2Environment
 
@@ -64,6 +66,7 @@ func NewChromium() *Chromium {
 	e.webResourceRequested = newICoreWebView2WebResourceRequestedEventHandler(e)
 	e.acceleratorKeyPressed = newICoreWebView2AcceleratorKeyPressedEventHandler(e)
 	e.navigationCompleted = newICoreWebView2NavigationCompletedEventHandler(e)
+	e.trySuspendCompleted = newICoreWebView2TrySuspendCompletedHandler(e)
 	e.permissions = make(map[CoreWebView2PermissionKind]CoreWebView2PermissionState)
 
 	return e
@@ -154,6 +157,54 @@ func (e *Chromium) Show() error {
 
 func (e *Chromium) Hide() error {
 	return e.controller.PutIsVisible(false)
+}
+
+func (e *Chromium) Suspend() bool {
+	if e.controller == nil || e.webview == nil {
+		return false
+	}
+	if err := e.Hide(); err != nil {
+		return false
+	}
+	webview3 := e.GetICoreWebView2_3()
+	if webview3 == nil {
+		_ = e.Show()
+		return false
+	}
+	defer webview3.vtbl.Release.Call(uintptr(unsafe.Pointer(webview3)))
+	atomic.StoreUintptr(&e.suspended, 1)
+	hr, _, _ := webview3.vtbl.TrySuspend.Call(
+		uintptr(unsafe.Pointer(webview3)),
+		uintptr(unsafe.Pointer(e.trySuspendCompleted)),
+	)
+	if int32(hr) < 0 {
+		atomic.StoreUintptr(&e.suspended, 0)
+		_ = e.Show()
+		return false
+	}
+	return true
+}
+
+func (e *Chromium) Resume() bool {
+	if e.controller == nil || e.webview == nil {
+		return false
+	}
+	if atomic.SwapUintptr(&e.suspended, 0) != 0 {
+		webview3 := e.GetICoreWebView2_3()
+		if webview3 != nil {
+			defer webview3.vtbl.Release.Call(uintptr(unsafe.Pointer(webview3)))
+			_, _, _ = webview3.vtbl.Resume.Call(uintptr(unsafe.Pointer(webview3)))
+		}
+	}
+	_ = e.Show()
+	return true
+}
+
+func (e *Chromium) TrySuspendCompleted(errorCode uintptr, isSuccessful uintptr) uintptr {
+	if int32(errorCode) < 0 || isSuccessful == 0 {
+		atomic.StoreUintptr(&e.suspended, 0)
+	}
+	return 0
 }
 
 func (e *Chromium) QueryInterface(_, _ uintptr) uintptr {

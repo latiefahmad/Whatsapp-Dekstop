@@ -41,6 +41,13 @@ type WebView interface {
 	// Destroy destroys a webview and closes the native window.
 	Destroy()
 
+	// Suspend hides the WebView2 controller and asks the renderer to release
+	// reclaimable resources. It is intended for minimized/inactive windows.
+	Suspend() bool
+
+	// Resume restores a WebView2 renderer previously suspended by Suspend.
+	Resume() bool
+
 	// Window returns a native window handle pointer. When using GTK backend the
 	// pointer is GtkWindow pointer, when using Cocoa backend the pointer is
 	// NSWindow pointer, when using Win32 backend the pointer is HWND pointer.

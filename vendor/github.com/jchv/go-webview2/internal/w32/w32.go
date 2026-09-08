@@ -122,6 +122,11 @@ const (
 	WAActiveClick = 2
 )
 
+const (
+	SizeRestored  = 0
+	SizeMinimized = 1
+)
+
 type WndClassExW struct {
 	CbSize        uint32
 	Style         uint32

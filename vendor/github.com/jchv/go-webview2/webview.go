@@ -44,6 +44,8 @@ type browser interface {
 	Eval(script string)
 	NotifyParentWindowPositionChanged() error
 	Focus()
+	Suspend() bool
+	Resume() bool
 }
 
 type webview struct {
@@ -229,7 +231,12 @@ func wndproc(hwnd, msg, wp, lp uintptr) uintptr {
 			r, _, _ := w32.User32DefWindowProcW.Call(hwnd, msg, wp, lp)
 			return r
 		case w32.WMSize:
-			w.browser.Resize()
+			if wp == w32.SizeMinimized {
+				w.browser.Suspend()
+			} else {
+				w.browser.Resume()
+				w.browser.Resize()
+			}
 		case w32.WMActivate:
 			if wp == w32.WAInactive {
 				break
@@ -346,6 +353,14 @@ func (w *webview) CreateWithOptions(opts WindowOptions) bool {
 
 func (w *webview) Destroy() {
 	_, _, _ = w32.User32PostMessageW.Call(w.hwnd, w32.WMClose, 0, 0)
+}
+
+func (w *webview) Suspend() bool {
+	return w.browser.Suspend()
+}
+
+func (w *webview) Resume() bool {
+	return w.browser.Resume()
 }
 
 func (w *webview) Run() {

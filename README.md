@@ -197,6 +197,7 @@ chmod +x whatsapp-desk
   - ⬇️ **Updated Viewer Toolbar Detection**: Detects the currently visible download control without depending on legacy WhatsApp `data-testid` attributes.
   - ↩️ **Close Returns to Chat**: Closing the native PDF preview also dismisses the WhatsApp document viewer and restores the active chat.
   - 🧠 **Safer Viewer Lifecycle**: Prevents repeated synthetic Escape events and releases temporary document URLs after preview.
+  - 🪟 **Lower Windows Idle Memory**: Suspends the WebView2 renderer when the app is minimized and resumes it safely when the window is restored.
 
 - **v1.5.3 (Deprecated)**:
   - 📄 **Multi-Format In-App Document Preview**: Instant preview modal for **PDF**, **Excel** (`.xlsx`, `.xls`, `.csv`), **Word** (`.docx`, `.doc`), and **Text** (`.txt`) directly in chat with native app opening support.

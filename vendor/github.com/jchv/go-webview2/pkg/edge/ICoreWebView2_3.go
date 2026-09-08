@@ -19,6 +19,53 @@ type ICoreWebView2_3 struct {
 	vtbl *iCoreWebView2_3Vtbl
 }
 
+type iCoreWebView2TrySuspendCompletedHandlerVtbl struct {
+	_IUnknownVtbl
+	Invoke ComProc
+}
+
+type ICoreWebView2TrySuspendCompletedHandler struct {
+	vtbl *iCoreWebView2TrySuspendCompletedHandlerVtbl
+	impl iCoreWebView2TrySuspendCompletedHandlerImpl
+}
+
+type iCoreWebView2TrySuspendCompletedHandlerImpl interface {
+	_IUnknownImpl
+	TrySuspendCompleted(errorCode uintptr, isSuccessful uintptr) uintptr
+}
+
+func trySuspendQueryInterface(this *ICoreWebView2TrySuspendCompletedHandler, refiid, object uintptr) uintptr {
+	return this.impl.QueryInterface(refiid, object)
+}
+
+func trySuspendAddRef(this *ICoreWebView2TrySuspendCompletedHandler) uintptr {
+	return this.impl.AddRef()
+}
+
+func trySuspendRelease(this *ICoreWebView2TrySuspendCompletedHandler) uintptr {
+	return this.impl.Release()
+}
+
+func trySuspendInvoke(this *ICoreWebView2TrySuspendCompletedHandler, errorCode, isSuccessful uintptr) uintptr {
+	return this.impl.TrySuspendCompleted(errorCode, isSuccessful)
+}
+
+var iCoreWebView2TrySuspendCompletedHandlerFn = iCoreWebView2TrySuspendCompletedHandlerVtbl{
+	_IUnknownVtbl{
+		NewComProc(trySuspendQueryInterface),
+		NewComProc(trySuspendAddRef),
+		NewComProc(trySuspendRelease),
+	},
+	NewComProc(trySuspendInvoke),
+}
+
+func newICoreWebView2TrySuspendCompletedHandler(impl iCoreWebView2TrySuspendCompletedHandlerImpl) *ICoreWebView2TrySuspendCompletedHandler {
+	return &ICoreWebView2TrySuspendCompletedHandler{
+		vtbl: &iCoreWebView2TrySuspendCompletedHandlerFn,
+		impl: impl,
+	}
+}
+
 func (i *ICoreWebView2_3) SetVirtualHostNameToFolderMapping(hostName, folderPath string, accessKind COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND) error {
 	_hostName, err := windows.UTF16PtrFromString(hostName)
 	if err != nil {
