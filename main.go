@@ -214,14 +214,35 @@ func getInitScript(ua string) string {
 		var lastClickedDocName = '';
 		var lastDocumentIntentAt = 0;
 		function extractDocumentName(el) {
-			while (el && el !== document.body) {
-				var title = el.getAttribute && (el.getAttribute('title') || el.getAttribute('aria-label') || '');
+			if (!el || typeof el.closest !== 'function') return '';
+			// NEVER extract document names from inside the media viewer, modal dialogs, or top toolbars
+			if (el.closest('[data-testid="media-viewer"]') ||
+			    el.closest('#wa-doc-modal-overlay') ||
+			    el.closest('[role="toolbar"]') ||
+			    el.closest('header')) {
+				return '';
+			}
+
+			// Only search within a chat message container / row / bubble
+			var msgContainer = el.closest('[data-testid*="msg-container"], [role="row"], div[data-id], .message-in, .message-out');
+			if (!msgContainer) return '';
+
+			var node = el;
+			while (node && node !== msgContainer.parentElement && node !== document.body) {
+				var title = node.getAttribute && (node.getAttribute('title') || node.getAttribute('aria-label') || '');
 				var titleMatch = title && title.match(/([^\n\r<>]{1,180}\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf))\b/i);
 				if (titleMatch && titleMatch[1]) return titleMatch[1].trim();
-				var text = el.innerText || '';
-				var textMatch = text.match(/([^\n\r<>]{1,180}\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf))\b/i);
-				if (textMatch && textMatch[1]) return textMatch[1].trim();
-				el = el.parentElement;
+
+				// Check text only on leaf-ish nodes to prevent matching unrelated long container text
+				if (!node.children || node.children.length < 5) {
+					var text = (node.innerText || '').trim();
+					if (text.length > 0 && text.length < 250) {
+						var textMatch = text.match(/([^\n\r<>]{1,180}\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf))\b/i);
+						if (textMatch && textMatch[1]) return textMatch[1].trim();
+					}
+				}
+				if (node === msgContainer) break;
+				node = node.parentElement;
 			}
 			return '';
 		}
@@ -236,6 +257,48 @@ func getInitScript(ua string) string {
 				lastDocumentIntentAt = Date.now();
 			}
 		}, true);
+
+		// Handle explicit user clicks on WhatsApp Web's Media Viewer ✕ close button
+		// Guarantees immediate exit to chat view even if internal viewer state is desynced
+		document.addEventListener('click', function(e) {
+			var target = e.target;
+			if (!target || typeof target.closest !== 'function') return;
+			var viewer = target.closest('[data-testid="media-viewer"]');
+			if (!viewer) return;
+
+			var isCloseBtn = target.closest([
+				'button[data-testid="x-viewer"]',
+				'[data-testid="x-viewer"]',
+				'[data-icon="x-viewer"]',
+				'[data-icon="x"]',
+				'[data-icon="back"]',
+				'button[aria-label*="Close" i]',
+				'button[aria-label*="Tutup" i]',
+				'button[title*="Close" i]',
+				'button[title*="Tutup" i]',
+				'[data-testid="btn-close"]'
+			].join(','));
+
+			if (isCloseBtn) {
+				lastDocumentIntentAt = 0;
+				lastClickedDocName = '';
+				setTimeout(function() {
+					var activeViewer = document.querySelector('[data-testid="media-viewer"]');
+					if (activeViewer) {
+						var escEvt = new KeyboardEvent('keydown', {
+							key: 'Escape',
+							code: 'Escape',
+							keyCode: 27,
+							which: 27,
+							bubbles: true,
+							cancelable: true
+						});
+						document.dispatchEvent(escEvt);
+						window.dispatchEvent(escEvt);
+					}
+				}, 60);
+			}
+		}, false);
 
 		// Intercept external link clicks to open in default browser
 		document.addEventListener('click', function(e) {
@@ -623,6 +686,7 @@ func getInitScript(ua string) string {
 					ownedBlobUrl = '';
 				}
 				dataUri = '';
+				if (window.dismissStuckViewer) window.dismissStuckViewer();
 			}
 
 			document.getElementById('wa-btn-close-doc').onclick = closeDocModal;
@@ -1260,6 +1324,15 @@ func getInitScript(ua string) string {
 			document.addEventListener('click', function(e) {
 				if (forwardingDocumentDownload) return;
 				var el = e.target;
+				if (!el) return;
+
+				// Completely ignore clicks inside media-viewer or custom modal overlay
+				if (typeof el.closest === 'function') {
+					if (el.closest('[data-testid="media-viewer"]') || el.closest('#wa-doc-modal-overlay')) {
+						return;
+					}
+				}
+
 				var foundName = extractDocumentName(el);
 				var clickedDoc = !!foundName;
 
@@ -1300,11 +1373,13 @@ func getInitScript(ua string) string {
 
 			// Hook 4: MutationObserver to auto-dismiss stuck media viewer and trigger download/preview
 			var viewerObserver = new MutationObserver(function() {
+				if (!isRecentPDFIntent()) return;
 				var viewer = document.querySelector('[data-testid="media-viewer"]');
 				if (viewer && !document.getElementById('wa-doc-modal-overlay')) {
 					var dlBtn = viewer.querySelector('[data-testid="download"], [data-icon="download"], button[title*="Unduh"], button[title*="Download"], button[aria-label*="Unduh"], button[aria-label*="Download"]');
 					var spinner = viewer.querySelector('[data-icon="tail-spin"], [data-testid="spinner"], div[role="status"]');
-					if (dlBtn && (spinner || (viewer.innerText && viewer.innerText.indexOf('.pdf') >= 0))) {
+					if (dlBtn && spinner) {
+						lastDocumentIntentAt = 0;
 						setTimeout(function() {
 							var v = document.querySelector('[data-testid="media-viewer"]');
 							if (v && !document.getElementById('wa-doc-modal-overlay')) {
