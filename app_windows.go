@@ -486,6 +486,10 @@ func runApp() {
 		return path
 	})
 
+	_ = w.Bind("openFileNative", func(filePath string) bool {
+		return openFileInDefaultApp(filePath)
+	})
+
 	_ = w.Bind("getDownloadDirNative", func() string {
 		s := loadSettings()
 		return s.DownloadDir

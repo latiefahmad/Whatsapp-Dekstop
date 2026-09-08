@@ -752,11 +752,50 @@ func getInitScript(ua string) string {
 			respTimer = setInterval(injectResponsive, 2500);
 		})();
 
-		// Automatic Download Interceptor for Chat Files & Media
+		// Automatic Download & Document Preview Interceptor for Chat Files & Media
 		(function() {
-			function captureDownload(href, filename) {
+			function isDocumentFileName(name) {
+				if (!name) return false;
+				var ext = name.toLowerCase();
+				return ext.endsWith('.pdf') || ext.endsWith('.doc') || ext.endsWith('.docx') ||
+					   ext.endsWith('.xls') || ext.endsWith('.xlsx') || ext.endsWith('.ppt') ||
+					   ext.endsWith('.pptx') || ext.endsWith('.txt') || ext.endsWith('.csv') ||
+					   ext.endsWith('.rtf');
+			}
+
+			function dismissStuckViewer() {
+				setTimeout(function() {
+					var closeSelectors = [
+						'button[data-testid="x-viewer"]',
+						'[data-icon="x-viewer"]',
+						'button[aria-label="Tutup"]',
+						'button[aria-label="Close"]',
+						'button[aria-label="Tutup pratinjau"]',
+						'button[title="Tutup"]',
+						'button[title="Close"]',
+						'[data-testid="btn-close"]'
+					];
+					for (var i = 0; i < closeSelectors.length; i++) {
+						try {
+							var btn = document.querySelector(closeSelectors[i]);
+							if (btn) {
+								btn.click();
+								return;
+							}
+						} catch (e) {}
+					}
+					var escEvt = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true });
+					document.dispatchEvent(escEvt);
+				}, 400);
+			}
+
+			function captureDownload(href, filename, shouldAutoOpen) {
 				if (!filename) filename = 'whatsapp_file';
-				showFloatingToast('⏳ Mengunduh: ' + filename + '...');
+				var isDoc = isDocumentFileName(filename);
+				if (shouldAutoOpen === undefined) {
+					shouldAutoOpen = isDoc;
+				}
+				showFloatingToast(isDoc ? ('📄 Membuka pratinjau: ' + filename + '...') : ('⏳ Mengunduh: ' + filename + '...'));
 
 				fetch(href)
 					.then(function(response) {
@@ -769,7 +808,17 @@ func getInitScript(ua string) string {
 							if (window.saveDownloadedFileNative) {
 								window.saveDownloadedFileNative(filename, base64data).then(function(savedPath) {
 									if (savedPath) {
-										showFloatingToast('💾 Berhasil disimpan: ' + filename);
+										if (shouldAutoOpen) {
+											if (window.openFileNative) {
+												window.openFileNative(savedPath);
+											} else if (window.previewDocumentNative) {
+												window.previewDocumentNative(filename, base64data);
+											}
+											showFloatingToast('📄 Pratinjau dibuka: ' + filename);
+											dismissStuckViewer();
+										} else {
+											showFloatingToast('💾 Berhasil disimpan: ' + filename);
+										}
 									} else {
 										showFloatingToast('❌ Gagal menyimpan berkas.');
 									}
@@ -791,8 +840,8 @@ func getInitScript(ua string) string {
 				var downloadAttr = this.getAttribute('download');
 				var href = this.href || this.getAttribute('href');
 				if ((downloadAttr !== null || this.download) && href && (href.indexOf('blob:') === 0 || href.indexOf('data:') === 0)) {
-					var name = downloadAttr || this.download || 'whatsapp_media';
-					captureDownload(href, name);
+					var name = downloadAttr || this.download || lastClickedDocName || 'whatsapp_media';
+					captureDownload(href, name, isDocumentFileName(name));
 					return;
 				}
 				return originalAnchorClick.apply(this, arguments);
@@ -806,18 +855,58 @@ func getInitScript(ua string) string {
 						var downloadAttr = target.getAttribute('download');
 						var href = target.href || target.getAttribute('href');
 						if ((downloadAttr !== null || target.download) && href && (href.indexOf('blob:') === 0 || href.indexOf('data:') === 0)) {
-							// If click is inside a chat message container, let WhatsApp native preview open!
-							if (target.closest('[data-testid="msg-container"]') || target.closest('[role="button"]') || target.closest('div[title*="Preview"]') || target.closest('div[title*="Lihat"]')) {
-								return;
-							}
 							e.preventDefault();
 							e.stopPropagation();
-							var name = downloadAttr || target.download || 'whatsapp_media';
-							captureDownload(href, name);
+							var name = downloadAttr || target.download || lastClickedDocName || 'whatsapp_media';
+							captureDownload(href, name, isDocumentFileName(name));
 							return;
 						}
 					}
 					target = target.parentElement;
+				}
+			}, true);
+
+			// Hook 3: Watch document bubble clicks in chat to handle viewer spinner
+			document.addEventListener('click', function(e) {
+				var el = e.target;
+				var clickedDoc = false;
+				var foundName = '';
+				while (el && el !== document.body) {
+					var title = el.getAttribute('title') || '';
+					if (isDocumentFileName(title)) {
+						clickedDoc = true;
+						foundName = title;
+						break;
+					}
+					var text = (el.innerText || '').trim();
+					if (isDocumentFileName(text)) {
+						clickedDoc = true;
+						foundName = text;
+						break;
+					}
+					el = el.parentElement;
+				}
+
+				if (clickedDoc) {
+					if (foundName) lastClickedDocName = foundName;
+
+					var checkCount = 0;
+					var checkTimer = setInterval(function() {
+						checkCount++;
+						if (checkCount > 25) {
+							clearInterval(checkTimer);
+							return;
+						}
+
+						var viewer = document.querySelector('[data-testid="media-viewer"], div[role="dialog"]');
+						if (viewer) {
+							var dlBtn = viewer.querySelector('[data-testid="download"], [data-icon="download"], button[title*="Unduh"], button[title*="Download"], button[aria-label*="Unduh"], button[aria-label*="Download"]');
+							if (dlBtn) {
+								clearInterval(checkTimer);
+								dlBtn.click();
+							}
+						}
+					}, 200);
 				}
 			}, true);
 		})();

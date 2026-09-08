@@ -173,3 +173,27 @@ func previewDocument(filename, dataURI string) (string, error) {
 	}
 	return targetPath, nil
 }
+
+func openFileInDefaultApp(filePath string) bool {
+	if filePath == "" {
+		return false
+	}
+	if _, err := os.Stat(filePath); err != nil {
+		return false
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", filePath)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", filePath)
+	default:
+		cmd = exec.Command("xdg-open", filePath)
+	}
+	if cmd != nil {
+		_ = cmd.Start()
+		return true
+	}
+	return false
+}
+
