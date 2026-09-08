@@ -144,6 +144,32 @@ func openFolderInFileManager(folderPath string) error {
 		return exec.Command("open", folderPath).Start()
 	} else if runtime.GOOS == "windows" {
 		return exec.Command("explorer.exe", folderPath).Start()
+	} else if runtime.GOOS == "linux" {
+		return exec.Command("xdg-open", folderPath).Start()
 	}
 	return nil
+}
+
+func previewDocument(filename, dataURI string) (string, error) {
+	tempDir := filepath.Join(os.TempDir(), "WhatsAppDeskPreview")
+	_ = os.MkdirAll(tempDir, 0755)
+
+	targetPath, err := saveDownloadedFileToDir(tempDir, filename, dataURI)
+	if err != nil {
+		return "", err
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", targetPath)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", targetPath)
+	default:
+		cmd = exec.Command("xdg-open", targetPath)
+	}
+	if cmd != nil {
+		_ = cmd.Start()
+	}
+	return targetPath, nil
 }

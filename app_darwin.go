@@ -80,9 +80,7 @@ static void triggerNativeMemoryPurge(void) {
         NSURL *url = navigationAction.request.URL;
         if (url) {
             NSString *scheme = [[url scheme] lowercaseString];
-            if ([scheme isEqualToString:@"blob"] || [scheme isEqualToString:@"data"] || [[url host] containsString:@"whatsapp."]) {
-                [webView loadRequest:navigationAction.request];
-            } else {
+            if (![scheme isEqualToString:@"blob"] && ![scheme isEqualToString:@"data"] && ![[url host] containsString:@"whatsapp."]) {
                 [[NSWorkspace sharedWorkspace] openURL:url];
             }
         }
@@ -817,9 +815,17 @@ func runApp() {
 		}()
 	})
 
-	// 13. Bind download and settings handlers
+	// 13. Bind download, preview, and settings handlers
 	_ = w.Bind("saveDownloadedFileNative", func(filename, dataURI string) string {
 		path, err := saveDownloadedFile(filename, dataURI)
+		if err != nil {
+			return ""
+		}
+		return path
+	})
+
+	_ = w.Bind("previewDocumentNative", func(filename, dataURI string) string {
+		path, err := previewDocument(filename, dataURI)
 		if err != nil {
 			return ""
 		}

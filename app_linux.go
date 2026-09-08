@@ -237,9 +237,17 @@ func runApp() {
 		}()
 	})
 
-	// Bind download and settings handlers
+	// Bind download, preview, and settings handlers
 	_ = w.Bind("saveDownloadedFileNative", func(filename, dataURI string) string {
 		path, err := saveDownloadedFile(filename, dataURI)
+		if err != nil {
+			return ""
+		}
+		return path
+	})
+
+	_ = w.Bind("previewDocumentNative", func(filename, dataURI string) string {
+		path, err := previewDocument(filename, dataURI)
 		if err != nil {
 			return ""
 		}

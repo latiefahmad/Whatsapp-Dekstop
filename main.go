@@ -148,6 +148,25 @@ func getInitScript(ua string) string {
 			};
 		})();
 
+		// Track clicked document filenames for preview and download
+		var lastClickedDocName = 'dokumen.pdf';
+		document.addEventListener('click', function(e) {
+			var el = e.target;
+			while (el && el !== document.body) {
+				var title = el.getAttribute('title') || '';
+				if (title.toLowerCase().endsWith('.pdf') || title.toLowerCase().endsWith('.doc') || title.toLowerCase().endsWith('.docx') || title.toLowerCase().endsWith('.xls') || title.toLowerCase().endsWith('.xlsx')) {
+					lastClickedDocName = title;
+					break;
+				}
+				var text = (el.innerText || '').trim();
+				if (text.toLowerCase().endsWith('.pdf')) {
+					lastClickedDocName = text;
+					break;
+				}
+				el = el.parentElement;
+			}
+		}, true);
+
 		// Intercept external link clicks to open in default browser
 		document.addEventListener('click', function(e) {
 			var target = e.target;
@@ -168,10 +187,138 @@ func getInitScript(ua string) string {
 			}
 		}, true);
 
-		// Intercept window.open for external URLs
+		// In-App Document Preview Modal Overlay
+		function showInAppDocModal(filename, dataUri) {
+			var existing = document.getElementById('wa-doc-modal-overlay');
+			if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+			var overlay = document.createElement('div');
+			overlay.id = 'wa-doc-modal-overlay';
+			overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);z-index:99999999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+
+			var modal = document.createElement('div');
+			modal.style.cssText = 'width:92%;max-width:960px;height:90%;background:#111b21;border:1px solid rgba(255,255,255,0.12);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 16px 40px rgba(0,0,0,0.8);';
+
+			// Header
+			var header = document.createElement('div');
+			header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);background:#202c33;flex-shrink:0;';
+			header.innerHTML = '' +
+				'<div style="display:flex;align-items:center;gap:10px;min-width:0;">' +
+				'  <span style="font-size:20px;">📄</span>' +
+				'  <strong style="font-size:13.5px;color:#e9edef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:400px;" title="' + filename + '">' + filename + '</strong>' +
+				'</div>' +
+				'<div style="display:flex;align-items:center;gap:8px;">' +
+				'  <button id="wa-btn-open-preview" style="background:#00a884;color:#111b21;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;">' +
+				'    📂 Buka di Aplikasi Sistem' +
+				'  </button>' +
+				'  <button id="wa-btn-save-doc" style="background:#2a3942;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">' +
+				'    💾 Simpan' +
+				'  </button>' +
+				'  <button id="wa-btn-close-doc" style="background:transparent;border:none;color:#8696a0;cursor:pointer;font-size:18px;padding:4px 8px;border-radius:6px;line-height:1;">✕</button>' +
+				'</div>';
+			modal.appendChild(header);
+
+			// Body
+			var body = document.createElement('div');
+			body.style.cssText = 'flex:1;width:100%;height:100%;position:relative;background:#0b141a;overflow:hidden;display:flex;align-items:center;justify-content:center;';
+
+			var objectEl = document.createElement('object');
+			objectEl.data = dataUri;
+			objectEl.type = 'application/pdf';
+			objectEl.style.cssText = 'width:100%;height:100%;border:none;';
+			objectEl.innerHTML = '' +
+				'<div style="text-align:center;padding:40px;color:#8696a0;display:flex;flex-direction:column;align-items:center;gap:16px;">' +
+				'  <span style="font-size:48px;">📄</span>' +
+				'  <div style="font-size:14px;color:#e9edef;font-weight:500;">Dokumen siap dibuka: <strong>' + filename + '</strong></div>' +
+				'  <button id="wa-btn-fallback-open" style="background:#00a884;color:#111b21;border:none;padding:10px 24px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">' +
+				'    Buka Dokumen di Aplikasi Sistem' +
+				'  </button>' +
+				'</div>';
+			body.appendChild(objectEl);
+			modal.appendChild(body);
+
+			overlay.appendChild(modal);
+			document.body.appendChild(overlay);
+
+			function closeDocModal() {
+				if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+			}
+
+			document.getElementById('wa-btn-close-doc').onclick = closeDocModal;
+			overlay.onclick = function(e) {
+				if (e.target === overlay) closeDocModal();
+			};
+
+			document.getElementById('wa-btn-open-preview').onclick = function() {
+				if (window.previewDocumentNative) {
+					window.previewDocumentNative(filename, dataUri);
+				}
+			};
+
+			var fbBtn = document.getElementById('wa-btn-fallback-open');
+			if (fbBtn) {
+				fbBtn.onclick = function() {
+					if (window.previewDocumentNative) {
+						window.previewDocumentNative(filename, dataUri);
+					}
+				};
+			}
+
+			document.getElementById('wa-btn-save-doc').onclick = function() {
+				if (window.saveDownloadedFileNative) {
+					window.saveDownloadedFileNative(filename, dataUri).then(function(p) {
+						if (p) showFloatingToast('💾 Berhasil disimpan: ' + filename);
+					});
+				}
+			};
+
+			var onEsc = function(e) {
+				if (e.key === 'Escape') {
+					closeDocModal();
+					window.removeEventListener('keydown', onEsc);
+				}
+			};
+			window.addEventListener('keydown', onEsc);
+		}
+
+		function handleBlobDocumentPreview(blobUrl) {
+			var filename = lastClickedDocName || 'dokumen.pdf';
+			if (!filename.toLowerCase().endsWith('.pdf') && !filename.includes('.')) {
+				filename += '.pdf';
+			}
+			showFloatingToast('📄 Membuka pratinjau: ' + filename + '...');
+
+			fetch(blobUrl)
+				.then(function(res) {
+					return res.blob();
+				})
+				.then(function(blob) {
+					var reader = new FileReader();
+					reader.onloadend = function() {
+						var dataUri = reader.result;
+						// Open natively with system default viewer
+						if (window.previewDocumentNative) {
+							window.previewDocumentNative(filename, dataUri);
+						}
+						// Also display in-app modal overlay
+						showInAppDocModal(filename, dataUri);
+					};
+					reader.readAsDataURL(blob);
+				})
+				.catch(function(err) {
+					console.error('Error fetching document blob:', err);
+					showFloatingToast('❌ Gagal memuat pratinjau berkas.');
+				});
+		}
+
+		// Intercept window.open for Blob URLs (PDF/Document previews) and external URLs
 		var origWindowOpen = window.open;
 		window.open = function(url, target, features) {
 			if (url && typeof url === 'string') {
+				if (url.indexOf('blob:') === 0) {
+					handleBlobDocumentPreview(url);
+					return null;
+				}
 				try {
 					var parsed = new URL(url, window.location.href);
 					if (!parsed.hostname.endsWith('whatsapp.com') && !parsed.hostname.endsWith('whatsapp.net') && (parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
