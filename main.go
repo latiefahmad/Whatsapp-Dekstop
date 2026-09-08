@@ -82,47 +82,8 @@ func getInitScript(ua string) string {
 			});
 		}
 
-		// Emulate navigator.pdfViewerEnabled & PDF MIME Types for In-Chat PDF Preview
-		try {
-			Object.defineProperty(navigator, 'pdfViewerEnabled', {
-				get: () => true,
-				configurable: true
-			});
-
-			if (!navigator.mimeTypes || !navigator.mimeTypes['application/pdf']) {
-				var pdfMime = {
-					type: 'application/pdf',
-					suffixes: 'pdf',
-					description: 'Portable Document Format',
-					enabledPlugin: {
-						name: 'Chrome PDF Viewer',
-						filename: 'internal-pdf-viewer',
-						description: 'Portable Document Format'
-					}
-				};
-				var mimeTypesList = [pdfMime];
-				mimeTypesList['application/pdf'] = pdfMime;
-				Object.defineProperty(navigator, 'mimeTypes', {
-					get: () => mimeTypesList,
-					configurable: true
-				});
-			}
-
-			if (!navigator.plugins || navigator.plugins.length === 0) {
-				var pdfPlugin = {
-					name: 'Chrome PDF Viewer',
-					filename: 'internal-pdf-viewer',
-					description: 'Portable Document Format',
-					length: 1
-				};
-				var pluginsList = [pdfPlugin];
-				pluginsList['Chrome PDF Viewer'] = pdfPlugin;
-				Object.defineProperty(navigator, 'plugins', {
-					get: () => pluginsList,
-					configurable: true
-				});
-			}
-		} catch (e) {}
+		// Keep WKWebView's real PDF capability untouched. Advertising Chrome's
+		// PDF plugin makes WhatsApp open a viewer that WKWebView cannot render.
 
 		// Native Notification Polyfill & ServiceWorker Notification Interceptor
 		(function() {
@@ -270,14 +231,18 @@ func getInitScript(ua string) string {
 						if (el) {
 							var btn = el.closest('button, [role="button"]') || el;
 							btn.click();
-							break;
+							clearInterval(dismissTimer);
+							return;
 						}
 					} catch (e) {}
 				}
-				var escEvt = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true });
-				try { viewer.dispatchEvent(escEvt); } catch (e) {}
-				document.dispatchEvent(escEvt);
-				window.dispatchEvent(escEvt);
+				// One synthetic Escape may close WhatsApp's viewer when its close
+				// control is absent. Do not repeatedly send it to document/window:
+				// those events also reach our own preview modal.
+				if (attempts === 1) {
+					var escEvt = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true });
+					try { viewer.dispatchEvent(escEvt); } catch (e) {}
+				}
 			}, 150);
 		}
 		window.dismissStuckViewer = dismissStuckViewer;
@@ -601,6 +566,16 @@ func getInitScript(ua string) string {
 			var isExcel = ext === 'xlsx' || ext === 'xls' || ext === 'csv';
 			var isWord = ext === 'docx' || ext === 'doc' || ext === 'rtf' || ext === 'txt';
 
+			// WKWebView has no reliable built-in renderer for PDF blob URLs.
+			// On macOS, render the already-saved file with PDFKit instead.
+			if (isPdf && savedPath && window.showPDFPreviewNative) {
+				window.showPDFPreviewNative(savedPath);
+				if (ownedBlobUrl) {
+					try { URL.revokeObjectURL(ownedBlobUrl); } catch (e) {}
+				}
+				return;
+			}
+
 			var docIcon = '📄';
 			var openBtnText = '📂 Open in System App';
 			var docTypeLabel = 'PDF Document';
@@ -806,7 +781,7 @@ func getInitScript(ua string) string {
 			};
 
 			var onEsc = function(e) {
-				if (e.key === 'Escape') {
+				if (e.key === 'Escape' && e.isTrusted) {
 					closeDocModal();
 					window.removeEventListener('keydown', onEsc);
 				}
@@ -1390,6 +1365,57 @@ func getInitScript(ua string) string {
 			}
 
 			var forwardingDocumentDownload = false;
+			var pendingViewerDownloadClick = false;
+			var viewerDownloadSelector = [
+				'button[data-testid*="download"]',
+				'[role="button"][data-testid*="download"]',
+				'button[aria-label*="Download" i]',
+				'button[aria-label*="Unduh" i]',
+				'[role="button"][aria-label*="Download" i]',
+				'[role="button"][aria-label*="Unduh" i]',
+				'button[title*="Download" i]',
+				'button[title*="Unduh" i]',
+				'[data-icon="download"]',
+				'[data-icon="download-refreshed"]',
+				'[data-icon*="download"]'
+			].join(',');
+
+			function findVisibleViewerDownloadControl() {
+				var candidates = document.querySelectorAll(viewerDownloadSelector);
+				var best = null;
+				var bestScore = -1;
+				for (var i = 0; i < candidates.length; i++) {
+					var raw = candidates[i];
+					if (raw.closest && raw.closest('#wa-doc-modal-overlay')) continue;
+					var control = (raw.closest && raw.closest('button, a, [role="button"]')) || raw;
+					var rect = control.getBoundingClientRect();
+					if (rect.width < 8 || rect.height < 8 || rect.bottom <= 0 || rect.right <= 0 ||
+						rect.top >= window.innerHeight || rect.left >= window.innerWidth) continue;
+					var style = window.getComputedStyle(control);
+					if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) continue;
+
+					var score = 0;
+					if (rect.top < window.innerHeight * 0.3) score += 4;
+					if (rect.left > window.innerWidth * 0.55) score += 3;
+					if (control.closest && control.closest('[role="dialog"], [data-testid*="viewer"], header, [role="toolbar"]')) score += 5;
+					if (score > bestScore) {
+						best = control;
+						bestScore = score;
+					}
+				}
+				return bestScore >= 4 ? best : null;
+			}
+
+			function triggerVisibleViewerDownload() {
+				if (pendingViewerDownloadClick || !isRecentPDFIntent()) return false;
+				var control = findVisibleViewerDownloadControl();
+				if (!control) return false;
+				pendingViewerDownloadClick = true;
+				control.click();
+				setTimeout(function() { pendingViewerDownloadClick = false; }, 1500);
+				return true;
+			}
+
 			function findDocumentDownloadControl(start) {
 				var selector = 'a[download], button[data-testid*="download"], [role="button"][data-testid*="download"], button[aria-label*="Unduh"], button[aria-label*="Download"], [role="button"][aria-label*="Unduh"], [role="button"][aria-label*="Download"], [data-icon="download"], [data-icon="download-refreshed"]';
 				var node = start;
@@ -1471,13 +1497,8 @@ func getInitScript(ua string) string {
 							return;
 						}
 
-						var viewer = document.querySelector('[data-testid="media-viewer"], div[role="dialog"]');
-						if (viewer) {
-							var dlBtn = viewer.querySelector('[data-testid*="download"], [data-icon="download"], [data-icon="download-refreshed"], button[title*="Unduh"], button[title*="Download"], button[aria-label*="Unduh"], button[aria-label*="Download"]');
-							if (dlBtn) {
-								clearInterval(checkTimer);
-								dlBtn.click();
-							}
+						if (triggerVisibleViewerDownload()) {
+							clearInterval(checkTimer);
 						}
 					}, 200);
 				}
@@ -1486,21 +1507,7 @@ func getInitScript(ua string) string {
 			// Hook 4: MutationObserver to auto-dismiss stuck media viewer and trigger download/preview
 			var viewerObserver = new MutationObserver(function() {
 				if (!isRecentPDFIntent()) return;
-				var viewer = document.querySelector('[data-testid="media-viewer"]');
-				if (viewer && !document.getElementById('wa-doc-modal-overlay')) {
-					var dlBtn = viewer.querySelector('[data-testid="download"], [data-icon="download"], button[title*="Unduh"], button[title*="Download"], button[aria-label*="Unduh"], button[aria-label*="Download"]');
-					var spinner = viewer.querySelector('[data-icon="tail-spin"], [data-testid="spinner"], div[role="status"]');
-					if (dlBtn && spinner) {
-						lastDocumentIntentAt = 0;
-						setTimeout(function() {
-							var v = document.querySelector('[data-testid="media-viewer"]');
-							if (v && !document.getElementById('wa-doc-modal-overlay')) {
-								var btn = v.querySelector('[data-testid="download"], [data-icon="download"]');
-								if (btn) btn.click();
-							}
-						}, 300);
-					}
-				}
+				if (!document.getElementById('wa-doc-modal-overlay')) triggerVisibleViewerDownload();
 			});
 
 			function initViewerObserver() {
