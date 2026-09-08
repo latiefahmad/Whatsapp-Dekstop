@@ -424,7 +424,7 @@ func getInitScript(ua string) string {
 			}
 
 			var rowMatches = sheetXml.match(/<row\b[\s\S]*?<\/row>/g) || [];
-			if (!rowMatches.length) return '<div style="padding:20px;color:#8696a0;">Lembar kerja kosong.</div>';
+			if (!rowMatches.length) return '<div style="padding:20px;color:#8696a0;">Spreadsheet is empty.</div>';
 
 			var colMap = {};
 			var parsedRows = [];
@@ -486,7 +486,7 @@ func getInitScript(ua string) string {
 		function parseCsvToHtml(csvText) {
 			if (!csvText) return '';
 			var lines = csvText.split(/\r?\n/).filter(function(l) { return l.trim().length > 0; });
-			if (!lines.length) return '<div style="padding:20px;color:#8696a0;">File CSV kosong.</div>';
+			if (!lines.length) return '<div style="padding:20px;color:#8696a0;">CSV file is empty.</div>';
 
 			var delimiter = lines[0].indexOf(';') !== -1 ? ';' : ',';
 			var tableHtml = '<div style="width:100%;height:100%;overflow:auto;background:#111b21;">' +
@@ -536,16 +536,16 @@ func getInitScript(ua string) string {
 			}
 
 			var docIcon = '📄';
-			var openBtnText = '📂 Buka di Aplikasi Sistem (Preview)';
-			var docTypeLabel = 'Dokumen PDF';
+			var openBtnText = '📂 Open in System App';
+			var docTypeLabel = 'PDF Document';
 			if (isExcel) {
 				docIcon = '📊';
-				openBtnText = '📊 Buka di Excel / Numbers';
-				docTypeLabel = 'Lembar Kerja Excel';
+				openBtnText = '📊 Open in Excel / Numbers';
+				docTypeLabel = 'Excel Spreadsheet';
 			} else if (isWord) {
 				docIcon = '📝';
-				openBtnText = '📝 Buka di Word / Pages';
-				docTypeLabel = 'Dokumen Word';
+				openBtnText = '📝 Open in Word / Pages';
+				docTypeLabel = 'Word Document';
 			}
 
 			var overlay = document.createElement('div');
@@ -563,7 +563,7 @@ func getInitScript(ua string) string {
 				'  <span style="font-size:22px;">' + docIcon + '</span>' +
 				'  <div style="min-width:0;">' +
 				'    <strong style="font-size:13.5px;color:#e9edef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:420px;" title="' + filename + '">' + filename + '</strong>' +
-				'    <span style="font-size:11px;color:#8696a0;">' + docTypeLabel + ' · Pratinjau Langsung</span>' +
+				'    <span style="font-size:11px;color:#8696a0;">' + docTypeLabel + ' · Direct Preview</span>' +
 				'  </div>' +
 				'</div>' +
 				'<div style="display:flex;align-items:center;gap:8px;">' +
@@ -571,7 +571,7 @@ func getInitScript(ua string) string {
 				'    ' + openBtnText +
 				'  </button>' +
 				'  <button id="wa-btn-save-doc" style="background:#2a3942;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">' +
-				'    💾 Unduh' +
+				'    💾 Download' +
 				'  </button>' +
 				'  <button id="wa-btn-close-doc" style="background:transparent;border:none;color:#8696a0;cursor:pointer;font-size:20px;padding:4px 8px;border-radius:6px;line-height:1;">✕</button>' +
 				'</div>';
@@ -596,7 +596,7 @@ func getInitScript(ua string) string {
 					'  <div style="font-size:64px;margin-bottom:16px;">' + docIcon + '</div>' +
 					'  <h2 style="color:#e9edef;font-size:17px;font-weight:600;margin:0 0 8px;">' + filename + '</h2>' +
 					'  <p style="color:#8696a0;font-size:12.5px;max-width:420px;line-height:1.5;margin:0 0 24px;">' +
-					(hint || ('Berkas ' + docTypeLabel + ' telah tersimpan di komputer Anda. Klik tombol di bawah untuk membukanya secara penuh.')) +
+					(hint || ('The ' + docTypeLabel + ' file is saved on your computer. Click the button below to open it.')) +
 					'  </p>' +
 					'  <button id="wa-btn-card-launch" style="background:#00a884;color:#111b21;border:none;padding:10px 24px;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,168,132,0.3);">' +
 					openBtnText +
@@ -621,7 +621,7 @@ func getInitScript(ua string) string {
 					renderCardFallback();
 				}
 			} else if (ext === 'xlsx') {
-				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Memuat pratinjau Excel...</div>';
+				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Loading Excel preview...</div>';
 				var uint8 = base64ToUint8Array(dataUri || '');
 				if (uint8) {
 					Promise.all([
@@ -642,7 +642,7 @@ func getInitScript(ua string) string {
 					renderCardFallback();
 				}
 			} else if (ext === 'docx') {
-				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Memuat pratinjau Word...</div>';
+				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Loading Word preview...</div>';
 				var uint8Doc = base64ToUint8Array(dataUri || '');
 				if (uint8Doc) {
 					readZipEntryText(uint8Doc, 'word/document.xml').then(function(docXml) {
@@ -699,10 +699,10 @@ func getInitScript(ua string) string {
 			document.getElementById('wa-btn-save-doc').onclick = function() {
 				if (dataUri && window.saveDownloadedFileNative) {
 					window.saveDownloadedFileNative(filename, dataUri).then(function(p) {
-						if (p) showFloatingToast('💾 Berhasil disimpan: ' + filename);
+						if (p) showFloatingToast('💾 Saved: ' + filename);
 					});
 				} else if (savedPath) {
-					showFloatingToast('💾 Berkas sudah tersimpan di: ' + savedPath);
+					showFloatingToast('💾 File is saved at: ' + savedPath);
 				}
 			};
 
@@ -729,7 +729,7 @@ func getInitScript(ua string) string {
 					(blob && (blob.type === 'application/octet-stream' || bType === '') && isRecentPDFIntent());
 
 				if (blob && isDocBlob) {
-					var name = lastClickedDocName || 'dokumen';
+					var name = lastClickedDocName || 'document';
 					if (!name.includes('.')) {
 						if (bType.indexOf('pdf') >= 0) name += '.pdf';
 						else if (bType.indexOf('sheet') >= 0 || bType.indexOf('excel') >= 0) name += '.xlsx';
@@ -746,7 +746,7 @@ func getInitScript(ua string) string {
 							window.saveDownloadedFileNative(name, base64data).then(function(savedPath) {
 								showInAppDocModal(name, ownedBlobUrl, savedPath, base64data, ownedBlobUrl);
 								dismissStuckViewer();
-								showFloatingToast('📄 Pratinjau dokumen: ' + name);
+								showFloatingToast('📄 Document preview: ' + name);
 							});
 						} else {
 							showInAppDocModal(name, ownedBlobUrl, '', base64data, ownedBlobUrl);
@@ -760,7 +760,7 @@ func getInitScript(ua string) string {
 		};
 
 		function handleBlobDocumentPreview(blobUrl) {
-			var name = lastClickedDocName || 'dokumen.pdf';
+			var name = lastClickedDocName || 'document.pdf';
 			fetch(blobUrl)
 				.then(function(res) { return res.blob(); })
 				.then(function(blob) {
@@ -774,7 +774,7 @@ func getInitScript(ua string) string {
 							window.saveDownloadedFileNative(name, base64data).then(function(savedPath) {
 								showInAppDocModal(name, ownedBlobUrl, savedPath, base64data, ownedBlobUrl);
 								dismissStuckViewer();
-								showFloatingToast('📄 Pratinjau dokumen: ' + name);
+								showFloatingToast('📄 Document preview: ' + name);
 							});
 						} else {
 							showInAppDocModal(name, ownedBlobUrl, '', base64data, ownedBlobUrl);
@@ -920,10 +920,10 @@ func getInitScript(ua string) string {
 						document.head.appendChild(styleEl);
 					}
 					document.body.classList.add('privacy-mode');
-					showFloatingToast('🔒 Mode Privasi: Aktif');
+					showFloatingToast('🔒 Privacy Mode: Enabled');
 				} else {
 					document.body.classList.remove('privacy-mode');
-					showFloatingToast('🔓 Mode Privasi: Nonaktif');
+					showFloatingToast('🔓 Privacy Mode: Disabled');
 				}
 				return isPrivacyActive;
 			};
@@ -946,7 +946,7 @@ func getInitScript(ua string) string {
 				if (window.toggleAlwaysOnTopNative) {
 					return window.toggleAlwaysOnTopNative().then(function(isPinned) {
 						isPinnedState = isPinned;
-						showFloatingToast(isPinned ? '📌 Always on Top: Aktif' : '📌 Always on Top: Nonaktif');
+						showFloatingToast(isPinned ? '📌 Always on Top: Enabled' : '📌 Always on Top: Disabled');
 						return isPinned;
 					});
 				}
@@ -966,11 +966,11 @@ func getInitScript(ua string) string {
 
 		// Reload and Refresh Functions (Cmd/Ctrl + R, Cmd/Ctrl + Shift + R, F5)
 		window.reloadWhatsApp = function() {
-			showFloatingToast('🔄 Memuat ulang percakapan...');
+			showFloatingToast('🔄 Reloading conversation...');
 			setTimeout(function() { window.location.reload(); }, 200);
 		};
 		window.hardRefreshWhatsApp = function() {
-			showFloatingToast('⚡ Hard refresh (membersihkan cache)...');
+			showFloatingToast('⚡ Hard refresh (clearing cache)...');
 			setTimeout(function() {
 				window.location.href = window.location.origin + window.location.pathname + '?_t=' + Date.now();
 			}, 200);
@@ -994,7 +994,7 @@ func getInitScript(ua string) string {
 				document.querySelectorAll('audio, video').forEach(function(el) {
 					el.muted = isMuted;
 				});
-				showFloatingToast(isMuted ? '🔇 Audio Notifikasi: Dimatikan' : '🔊 Audio Notifikasi: Diaktifkan');
+				showFloatingToast(isMuted ? '🔇 Notification Audio: Muted' : '🔊 Notification Audio: Unmuted');
 				return isMuted;
 			};
 			window.isAudioMuted = function() {
@@ -1021,7 +1021,7 @@ func getInitScript(ua string) string {
 				if (window.toggleAutoStartNative) {
 					return window.toggleAutoStartNative().then(function(isEnabled) {
 						isAutoStartState = isEnabled;
-						showFloatingToast(isEnabled ? '🚀 Buka Otomatis saat Boot: Aktif' : '🚀 Buka Otomatis saat Boot: Nonaktif');
+						showFloatingToast(isEnabled ? '🚀 Launch on Boot: Enabled' : '🚀 Launch on Boot: Disabled');
 						return isEnabled;
 					});
 				}
@@ -1069,7 +1069,7 @@ func getInitScript(ua string) string {
 				msg.id = 'wa-update-text';
 				msg.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;color:#d1d7db;';
 				var titleText = releaseTitle ? releaseTitle : ('WhatsApp Desk v' + latestVersion);
-				msg.innerHTML = 'Pembaruan tersedia: <strong style="color:#e9edef;">' + titleText + '</strong>';
+				msg.innerHTML = 'Update available: <strong style="color:#e9edef;">' + titleText + '</strong>';
 
 				leftWrap.appendChild(badge);
 				leftWrap.appendChild(msg);
@@ -1083,12 +1083,12 @@ func getInitScript(ua string) string {
 
 				var btnUpdate = document.createElement('button');
 				btnUpdate.id = 'wa-btn-update';
-				btnUpdate.textContent = 'Perbarui Sekarang';
+				btnUpdate.textContent = 'Update Now';
 				btnUpdate.style.cssText = 'background:#00a884;color:#111b21;border:none;padding:5px 14px;border-radius:14px;font-size:12px;font-weight:600;cursor:pointer;outline:none;transition:all 0.15s ease;box-shadow:0 2px 8px rgba(0,168,132,0.3);';
 
 				var btnDismiss = document.createElement('button');
 				btnDismiss.id = 'wa-btn-dismiss';
-				btnDismiss.textContent = 'Nanti';
+				btnDismiss.textContent = 'Later';
 				btnDismiss.style.cssText = 'background:transparent;color:#8696a0;border:none;padding:5px 10px;border-radius:14px;font-size:12px;cursor:pointer;outline:none;transition:color 0.15s ease;';
 
 				actionsDiv.appendChild(btnUpdate);
@@ -1124,8 +1124,8 @@ func getInitScript(ua string) string {
 
 				try {
 					if (window.sendNativeNotification) {
-						var notifTitle = 'Pembaruan Tersedia';
-						var notifBody = 'WhatsApp Desk v' + latestVersion + ' telah dirilis. Klik untuk memperbarui aplikasi.';
+						var notifTitle = 'Update Available';
+						var notifBody = 'WhatsApp Desk v' + latestVersion + ' is available. Click to update the application.';
 						window.sendNativeNotification(notifTitle, notifBody);
 					}
 				} catch (e) {}
@@ -1133,7 +1133,7 @@ func getInitScript(ua string) string {
 				btnUpdate.onclick = function() {
 					actionsDiv.style.display = 'none';
 					progressWrap.style.display = 'flex';
-					msg.textContent = 'Mengunduh paket pembaruan...';
+					msg.textContent = 'Downloading update package...';
 					if (window.startUpdateNative) {
 						window.startUpdateNative(downloadUrl);
 					}
@@ -1164,23 +1164,23 @@ func getInitScript(ua string) string {
 				var prog = document.getElementById('wa-update-progress-wrap');
 				if (actions) actions.style.display = 'flex';
 				if (prog) prog.style.display = 'none';
-				showFloatingToast('❌ Gagal memperbarui: ' + errMsg);
+				showFloatingToast('❌ Failed to update: ' + errMsg);
 			};
 
 			// Manual Check Function and Shortcut (Cmd/Ctrl + Shift + U)
 			window.triggerCheckForUpdate = function() {
-				showFloatingToast('🔍 Memeriksa pembaruan...');
+				showFloatingToast('🔍 Checking for updates...');
 				if (window.checkForUpdateNative) {
 					return window.checkForUpdateNative(true).then(function(res) {
 						if (res && res.available) {
 							window.showUpdateBanner(res.latest_version, res.release_title, res.download_url);
 						} else {
 							var cur = (res && res.current_version) ? res.current_version : '1.5.3';
-							showFloatingToast('✅ WhatsApp Desk sudah versi terbaru (v' + cur + ')');
+							showFloatingToast('✅ WhatsApp Desk is up to date (v' + cur + ')');
 						}
 						return res;
 					}).catch(function() {
-						showFloatingToast('⚠️ Tidak dapat memeriksa pembaruan saat ini.');
+						showFloatingToast('⚠️ Unable to check for updates at this time.');
 					});
 				}
 				return Promise.resolve(null);
@@ -1237,7 +1237,7 @@ func getInitScript(ua string) string {
 				if (shouldAutoOpen === undefined) {
 					shouldAutoOpen = isDoc;
 				}
-				showFloatingToast(isDoc ? ('📄 Membuka pratinjau: ' + filename + '...') : ('⏳ Mengunduh: ' + filename + '...'));
+				showFloatingToast(isDoc ? ('📄 Opening preview: ' + filename + '...') : ('⏳ Downloading: ' + filename + '...'));
 
 				fetch(href)
 					.then(function(response) {
@@ -1256,17 +1256,17 @@ func getInitScript(ua string) string {
 										if (shouldAutoOpen) {
 											showInAppDocModal(filename, ownedBlobUrl || href, savedPath, base64data, ownedBlobUrl);
 											if (window.dismissStuckViewer) window.dismissStuckViewer();
-											showFloatingToast('📄 Pratinjau dibuka: ' + filename);
+											showFloatingToast('📄 Preview opened: ' + filename);
 										} else {
-											showFloatingToast('💾 Berhasil disimpan: ' + filename);
+											showFloatingToast('💾 Saved successfully: ' + filename);
 										}
 									} else {
 										if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
-										showFloatingToast('❌ Gagal menyimpan berkas.');
+										showFloatingToast('❌ Failed to save file.');
 									}
 								}).catch(function() {
 									if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
-									showFloatingToast('❌ Error menyimpan berkas.');
+									showFloatingToast('❌ Error saving file.');
 								});
 							}
 						};
@@ -1516,7 +1516,7 @@ func getInitScript(ua string) string {
 				if (window.setAppThemeNative) {
 					window.setAppThemeNative(theme);
 				}
-				showFloatingToast(theme === 'dark' ? '🌙 Tema: Mode Gelap' : (theme === 'light' ? '☀️ Tema: Mode Terang' : '💻 Tema: Mengikuti Sistem'));
+				showFloatingToast(theme === 'dark' ? '🌙 Theme: Dark Mode' : (theme === 'light' ? '☀️ Theme: Light Mode' : '💻 Theme: Follow System'));
 			};
 
 			// Listen for system appearance changes
@@ -1567,8 +1567,8 @@ func getInitScript(ua string) string {
 
 				var btn = document.createElement('button');
 				btn.id = 'wa-toolbar-settings-btn';
-				btn.setAttribute('aria-label', 'Pengaturan & Kontrol');
-				btn.title = 'Pengaturan & Kontrol (' + (isMac ? 'Cmd' : 'Ctrl') + ' + ,)';
+				btn.setAttribute('aria-label', 'Settings & Controls');
+				btn.title = 'Settings & Controls (' + (isMac ? 'Cmd' : 'Ctrl') + ' + ,)';
 				btn.style.cssText = 'width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:none;color:#aebac1;cursor:pointer;outline:none;transition:background-color 0.15s ease, color 0.15s ease;flex-shrink:0;margin:0 2px;';
 				btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
 					'<circle cx="12" cy="12" r="3"></circle>' +
@@ -1626,7 +1626,7 @@ func getInitScript(ua string) string {
 					'  </div>' +
 					'  <div>' +
 					'    <h3 id="wa-modal-title" style="margin:0;font-size:15px;font-weight:600;">WhatsApp Desk</h3>' +
-					'    <span id="wa-modal-sub" style="font-size:11px;">Pengaturan aplikasi · versi 1.5.3</span>' +
+					'    <span id="wa-modal-sub" style="font-size:11px;">Application settings · version 1.5.3</span>' +
 					'  </div>' +
 					'</div>' +
 					'<button id="wa-settings-close-x" style="background:transparent;border:none;cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;">✕</button>';
@@ -1638,13 +1638,13 @@ func getInitScript(ua string) string {
 				themeBox.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-radius:0;border-width:0 0 1px;border-style:solid;gap:16px;';
 				themeBox.innerHTML = '' +
 					'<div>' +
-					'  <strong class="wa-text-primary" style="font-size:12.5px;display:block;">Tampilan</strong>' +
-					'  <span class="wa-text-muted" style="font-size:11px;">Tema antarmuka aplikasi</span>' +
+					'  <strong class="wa-text-primary" style="font-size:12.5px;display:block;">Appearance</strong>' +
+					'  <span class="wa-text-muted" style="font-size:11px;">Application interface theme</span>' +
 					'</div>' +
 					'<div style="display:flex;align-items:center;gap:4px;">' +
-					'  <button id="wa-theme-btn-dark" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">Gelap</button>' +
-					'  <button id="wa-theme-btn-light" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">Terang</button>' +
-					'  <button id="wa-theme-btn-system" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">Sistem</button>' +
+					'  <button id="wa-theme-btn-dark" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">Dark</button>' +
+					'  <button id="wa-theme-btn-light" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">Light</button>' +
+					'  <button id="wa-theme-btn-system" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">System</button>' +
 					'</div>';
 				modal.appendChild(themeBox);
 
@@ -1659,10 +1659,10 @@ func getInitScript(ua string) string {
 				cardPrivacy.innerHTML = '' +
 					'<div>' +
 					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
-					'    <strong class="wa-text-primary" style="font-size:12.5px;">Mode privasi</strong>' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">Privacy Mode</strong>' +
 					'    <span id="wa-badge-priv" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
-					'  <div class="wa-text-muted" style="font-size:11px;">Sensor chat & media saat kursor menjauh.</div>' +
+					'  <div class="wa-text-muted" style="font-size:11px;">Blur chats and media when cursor is idle.</div>' +
 					'</div>' +
 					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
 					'  <span class="wa-text-muted" style="font-size:10px;font-family:monospace;">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+P</span>' +
@@ -1677,10 +1677,10 @@ func getInitScript(ua string) string {
 				cardPin.innerHTML = '' +
 					'<div>' +
 					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
-					'    <strong class="wa-text-primary" style="font-size:12.5px;">Jendela selalu di depan</strong>' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">Always on Top</strong>' +
 					'    <span id="wa-badge-pin" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
-					'  <div class="wa-text-muted" style="font-size:11px;">Jendela selalu di depan aplikasi lain.</div>' +
+					'  <div class="wa-text-muted" style="font-size:11px;">Keep window floating above other applications.</div>' +
 					'</div>' +
 					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
 					'  <span class="wa-text-muted" style="font-size:10px;font-family:monospace;">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+T</span>' +
@@ -1695,10 +1695,10 @@ func getInitScript(ua string) string {
 				cardMute.innerHTML = '' +
 					'<div>' +
 					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
-					'    <strong class="wa-text-primary" style="font-size:12.5px;">Suara media</strong>' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">Notification Audio</strong>' +
 					'    <span id="wa-badge-mute" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
-					'  <div class="wa-text-muted" style="font-size:11px;">Senyapkan seluruh audio notifikasi.</div>' +
+					'  <div class="wa-text-muted" style="font-size:11px;">Mute all notification sounds and media audio.</div>' +
 					'</div>' +
 					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
 					'  <span class="wa-text-muted" style="font-size:10px;font-family:monospace;">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+M</span>' +
@@ -1713,10 +1713,10 @@ func getInitScript(ua string) string {
 				cardAuto.innerHTML = '' +
 					'<div>' +
 					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
-					'    <strong class="wa-text-primary" style="font-size:12.5px;">Buka saat masuk sistem</strong>' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">Launch at Startup</strong>' +
 					'    <span id="wa-badge-auto" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
-					'  <div class="wa-text-muted" style="font-size:11px;">Mulai WhatsApp otomatis saat komputer nyala.</div>' +
+					'  <div class="wa-text-muted" style="font-size:11px;">Automatically start WhatsApp Desk on system login.</div>' +
 					'</div>' +
 					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
 					'  <span class="wa-text-muted" style="font-size:10px;font-family:monospace;">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+S</span>' +
@@ -1732,16 +1732,16 @@ func getInitScript(ua string) string {
 				folderSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;border-radius:0;border-width:0 0 1px;border-style:solid;padding:14px 0;';
 				folderSection.innerHTML = '' +
 					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
-					'  <strong class="wa-text-primary" style="font-size:12.5px;">Folder unduhan</strong>' +
-					'  <button id="wa-btn-reset-folder" style="background:transparent;border:none;color:#00a884;font-size:11px;cursor:pointer;padding:2px 4px;">Gunakan bawaan</button>' +
+					'  <strong class="wa-text-primary" style="font-size:12.5px;">Downloads folder</strong>' +
+					'  <button id="wa-btn-reset-folder" style="background:transparent;border:none;color:#00a884;font-size:11px;cursor:pointer;padding:2px 4px;">Use default</button>' +
 					'</div>' +
-					'<div class="wa-text-muted" style="font-size:11px;">Berkas & media yang diunduh dari chat otomatis tersimpan permanen di sini:</div>' +
+					'<div class="wa-text-muted" style="font-size:11px;">Files & media downloaded from chat are permanently saved here:</div>' +
 					'<div id="wa-folder-box" style="display:flex;align-items:center;border-width:1px;border-style:solid;border-radius:6px;padding:6px 8px;min-width:0;">' +
-					'  <span id="wa-folder-path" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;font-family:monospace;">Memuat...</span>' +
+					'  <span id="wa-folder-path" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;font-family:monospace;">Loading...</span>' +
 					'</div>' +
 					'<div style="display:flex;align-items:center;gap:6px;margin-top:2px;">' +
-					'  <button id="wa-btn-change-folder" class="wa-card-btn" style="flex:1;padding:6px 10px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;">Ubah Lokasi Folder...</button>' +
-					'  <button id="wa-btn-open-folder" style="background:#00a884;color:#111b21;border:none;padding:6px 12px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;">' + (isMac ? 'Buka di Finder' : 'Buka Folder') + '</button>' +
+					'  <button id="wa-btn-change-folder" class="wa-card-btn" style="flex:1;padding:6px 10px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;">Change Folder Location...</button>' +
+					'  <button id="wa-btn-open-folder" style="background:#00a884;color:#111b21;border:none;padding:6px 12px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;">' + (isMac ? 'Open in Finder' : 'Open Folder') + '</button>' +
 					'</div>';
 				modal.appendChild(folderSection);
 
@@ -1750,12 +1750,12 @@ func getInitScript(ua string) string {
 				actionsSection.className = 'wa-modal-card';
 				actionsSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;border-radius:0;border-width:0 0 1px;border-style:solid;padding:14px 0;';
 				actionsSection.innerHTML = '' +
-					'<strong class="wa-text-primary" style="font-size:12.5px;">Pemeliharaan</strong>' +
+					'<strong class="wa-text-primary" style="font-size:12.5px;">Maintenance</strong>' +
 					'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">' +
-					'  <button id="wa-btn-check-updates-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Periksa pembaruan</button>' +
-					'  <button id="wa-btn-reload-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Muat ulang chat</button>' +
-					'  <button id="wa-btn-hardref-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Bersihkan cache</button>' +
-					'  <button id="wa-btn-onboard-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Lihat panduan</button>' +
+					'  <button id="wa-btn-check-updates-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Check for updates</button>' +
+					'  <button id="wa-btn-reload-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Reload chat</button>' +
+					'  <button id="wa-btn-hardref-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Clear cache</button>' +
+					'  <button id="wa-btn-onboard-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">View welcome guide</button>' +
 					'</div>';
 				modal.appendChild(actionsSection);
 
@@ -1763,15 +1763,15 @@ func getInitScript(ua string) string {
 				var disclaimer = document.createElement('div');
 				disclaimer.className = 'wa-text-muted';
 				disclaimer.style.cssText = 'font-size:10px;line-height:1.4;border-top-width:1px;border-top-style:solid;padding-top:8px;margin-top:2px;';
-				disclaimer.innerHTML = '<strong>WhatsApp Desk</strong> adalah aplikasi independen dan tidak berafiliasi dengan Meta.';
+				disclaimer.innerHTML = '<strong>WhatsApp Desk</strong> is an independent application and is not affiliated with Meta.';
 				modal.appendChild(disclaimer);
 
 				// Footer
 				var footer = document.createElement('div');
 				footer.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:2px;';
-				footer.innerHTML = '<span class="wa-text-muted" style="font-size:10.5px;">Tekan <kbd style="padding:1px 3px;border-radius:3px;font-family:monospace;">Esc</kbd> untuk menutup</span>';
+				footer.innerHTML = '<span class="wa-text-muted" style="font-size:10.5px;">Press <kbd style="padding:1px 3px;border-radius:3px;font-family:monospace;">Esc</kbd> to close</span>';
 				var btnDone = document.createElement('button');
-				btnDone.textContent = 'Selesai';
+				btnDone.textContent = 'Done';
 				btnDone.id = 'wa-btn-done';
 				btnDone.style.cssText = 'padding:5px 16px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;border-width:1px;border-style:solid;';
 				footer.appendChild(btnDone);
@@ -1873,40 +1873,40 @@ func getInitScript(ua string) string {
 					var badgePriv = document.getElementById('wa-badge-priv');
 					var btnPriv = document.getElementById('wa-action-toggle-priv');
 					if (badgePriv && btnPriv) {
-						badgePriv.textContent = privActive ? 'Aktif' : 'Nonaktif';
+						badgePriv.textContent = privActive ? 'Enabled' : 'Disabled';
 						badgePriv.style.background = privActive ? (isThemeDark ? 'rgba(0,168,132,0.15)' : 'rgba(0,128,105,0.15)') : 'transparent';
 						badgePriv.style.color = privActive ? accent : '#8696a0';
-						btnPriv.textContent = privActive ? 'Matikan' : 'Aktifkan';
+						btnPriv.textContent = privActive ? 'Disable' : 'Enable';
 					}
 
 					var pinActive = window.isAlwaysOnTopActive ? window.isAlwaysOnTopActive() : false;
 					var badgePin = document.getElementById('wa-badge-pin');
 					var btnPin = document.getElementById('wa-action-toggle-pin');
 					if (badgePin && btnPin) {
-						badgePin.textContent = pinActive ? 'Aktif' : 'Nonaktif';
+						badgePin.textContent = pinActive ? 'Pinned' : 'Unpinned';
 						badgePin.style.background = pinActive ? (isThemeDark ? 'rgba(0,168,132,0.15)' : 'rgba(0,128,105,0.15)') : 'transparent';
 						badgePin.style.color = pinActive ? accent : '#8696a0';
-						btnPin.textContent = pinActive ? 'Lepas' : 'Pin';
+						btnPin.textContent = pinActive ? 'Unpin' : 'Pin';
 					}
 
 					var muteActive = window.isAudioMuted ? window.isAudioMuted() : false;
 					var badgeMute = document.getElementById('wa-badge-mute');
 					var btnMute = document.getElementById('wa-action-toggle-mute');
 					if (badgeMute && btnMute) {
-						badgeMute.textContent = muteActive ? 'Senyap' : 'Bersuara';
+						badgeMute.textContent = muteActive ? 'Muted' : 'Unmuted';
 						badgeMute.style.background = muteActive ? 'rgba(234,0,56,0.15)' : 'transparent';
 						badgeMute.style.color = muteActive ? '#ff5252' : accent;
-						btnMute.textContent = muteActive ? 'Bunyikan' : 'Matikan';
+						btnMute.textContent = muteActive ? 'Unmute' : 'Mute';
 					}
 
 					var autoActive = window.isAutoStartActive ? window.isAutoStartActive() : false;
 					var badgeAuto = document.getElementById('wa-badge-auto');
 					var btnAuto = document.getElementById('wa-action-toggle-auto');
 					if (badgeAuto && btnAuto) {
-						badgeAuto.textContent = autoActive ? 'Aktif' : 'Nonaktif';
+						badgeAuto.textContent = autoActive ? 'Enabled' : 'Disabled';
 						badgeAuto.style.background = autoActive ? (isThemeDark ? 'rgba(0,168,132,0.15)' : 'rgba(0,128,105,0.15)') : 'transparent';
 						badgeAuto.style.color = autoActive ? accent : '#8696a0';
-						btnAuto.textContent = autoActive ? 'Matikan' : 'Aktifkan';
+						btnAuto.textContent = autoActive ? 'Disable' : 'Enable';
 					}
 
 					window.syncModalTheme(isThemeDark);
@@ -1976,7 +1976,7 @@ func getInitScript(ua string) string {
 						window.chooseDownloadDirNative().then(function(newDir) {
 							if (newDir && pathLabel) {
 								pathLabel.textContent = newDir;
-								showFloatingToast('📁 Folder unduhan berhasil diubah!');
+								showFloatingToast('📁 Downloads folder updated!');
 							}
 						});
 					}
@@ -1986,7 +1986,7 @@ func getInitScript(ua string) string {
 				document.getElementById('wa-btn-open-folder').onclick = function() {
 					if (window.openDownloadDirNative) {
 						window.openDownloadDirNative();
-						showFloatingToast('📁 Membuka folder di sistem berkas...');
+						showFloatingToast('📁 Opening folder in file manager...');
 					}
 				};
 
@@ -1995,7 +1995,7 @@ func getInitScript(ua string) string {
 					if (window.resetDownloadDirNative) {
 						window.resetDownloadDirNative().then(function(defDir) {
 							if (pathLabel) pathLabel.textContent = defDir;
-							showFloatingToast('📁 Folder unduhan direset ke default.');
+							showFloatingToast('📁 Downloads folder reset to default.');
 						});
 					}
 				};
@@ -2010,7 +2010,7 @@ func getInitScript(ua string) string {
 					e.preventDefault();
 					if (window.openDownloadDirNative) {
 						window.openDownloadDirNative();
-						showFloatingToast('📁 Membuka folder unduhan...');
+						showFloatingToast('📁 Opening downloads folder...');
 					}
 				}
 			});
