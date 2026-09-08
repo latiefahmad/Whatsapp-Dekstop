@@ -13,9 +13,9 @@ package main
 static void configureWebKitMemoryLimits(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // Strictly cap in-memory URL cache to 2MB (default was unbounded/hundreds of MBs) and disk cache to 32MB
-        NSURLCache *sharedCache = [[NSURLCache alloc] initWithMemoryCapacity:2 * 1024 * 1024
-                                                                diskCapacity:32 * 1024 * 1024
+        // Cap in-memory URL cache to 16MB and disk cache to 64MB
+        NSURLCache *sharedCache = [[NSURLCache alloc] initWithMemoryCapacity:16 * 1024 * 1024
+                                                                diskCapacity:64 * 1024 * 1024
                                                                     diskPath:nil];
         [NSURLCache setSharedURLCache:sharedCache];
     });
@@ -93,9 +93,10 @@ static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) 
             NSString* ua = [NSString stringWithUTF8String:uaStr];
             [wv setCustomUserAgent:ua];
 
-            // Enable Core Animation Layer but disable asynchronous double-buffering to save 100MB+ RAM
+            // Enable GPU-accelerated drawing & asynchronous layer rendering for smooth scrolling
             [wv setWantsLayer:YES];
             if (wv.layer) {
+                [wv.layer setDrawsAsynchronously:YES];
                 [wv.layer setOpaque:YES];
             }
 
@@ -103,19 +104,13 @@ static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) 
             @try {
                 WKPreferences* prefs = [wv.configuration preferences];
                 [prefs setValue:@YES forKey:@"acceleratedDrawingEnabled"];
-                // canvasUsesAcceleratedDrawing creates dedicated 32-bit Metal IOSurface buffers
-                // for EVERY canvas element (audio waveforms, stickers, thumbnails).
-                // Setting this to NO saves 200MB-500MB of GPU/Footprint RAM!
-                [prefs setValue:@NO forKey:@"canvasUsesAcceleratedDrawing"];
+                [prefs setValue:@YES forKey:@"canvasUsesAcceleratedDrawing"];
                 [prefs setValue:@YES forKey:@"webGLEnabled"];
                 [prefs setValue:@NO forKey:@"developerExtrasEnabled"];
 
                 // Disable pageCache & backForwardCache to prevent WebKit from retaining old page trees
                 [prefs setValue:@NO forKey:@"backForwardCacheEnabled"];
                 [prefs setValue:@NO forKey:@"pageCacheEnabled"];
-                
-                // Aggressively restrict background offline caches
-                [prefs setValue:@NO forKey:@"offlineWebApplicationCacheEnabled"];
             } @catch (NSException *exception) {}
 
             g_uiDelegate = [[WhatsAppUIDelegate alloc] init];
@@ -754,12 +749,12 @@ func runApp() {
 		}
 	}()
 
-	// 5b. Periodic WebKit and Go runtime memory cleanup (every 60s)
+	// 5b. Periodic Go runtime memory cleanup (every 60s)
+	// WebKit memory is only purged when the window loses focus or minimizes (in windowDidResignKey)
 	go func() {
 		ticker := time.NewTicker(60 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			C.triggerNativeMemoryPurge()
 			debug.FreeOSMemory()
 		}
 	}()
