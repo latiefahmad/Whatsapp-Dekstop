@@ -226,8 +226,8 @@ func getInitScript(ua string) string {
 			return '';
 		}
 		function isRecentPDFIntent() {
-			return !!lastClickedDocName && lastClickedDocName.toLowerCase().endsWith('.pdf') &&
-				(Date.now() - lastDocumentIntentAt) < 15000;
+			return !!lastClickedDocName && isDocumentFileName(lastClickedDocName) &&
+				(Date.now() - lastDocumentIntentAt) < 20000;
 		}
 		document.addEventListener('click', function(e) {
 			var name = extractDocumentName(e.target);
@@ -257,19 +257,232 @@ func getInitScript(ua string) string {
 			}
 		}, true);
 
-		// In-App Document Preview Modal Overlay
+		// Helper: Decode base64 dataURI to Uint8Array
+		function base64ToUint8Array(dataUri) {
+			try {
+				var base64 = dataUri.indexOf(';base64,') !== -1 ? dataUri.split(';base64,')[1] : dataUri;
+				var binary = atob(base64);
+				var bytes = new Uint8Array(binary.length);
+				for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+				return bytes;
+			} catch (e) {
+				return null;
+			}
+		}
+
+		// Helper: Read a specific file from ZIP payload (e.g. word/document.xml, xl/worksheets/sheet1.xml)
+		async function readZipEntryText(uint8Array, targetPath) {
+			if (!uint8Array || uint8Array.length < 30) return null;
+			try {
+				var view = new DataView(uint8Array.buffer, uint8Array.byteOffset, uint8Array.byteLength);
+				var offset = 0;
+				while (offset < uint8Array.length - 30) {
+					if (view.getUint32(offset, true) === 0x04034b50) {
+						var compMethod = view.getUint16(offset + 8, true);
+						var compSize = view.getUint32(offset + 18, true);
+						var nameLen = view.getUint16(offset + 26, true);
+						var extraLen = view.getUint16(offset + 28, true);
+						var nameBytes = uint8Array.subarray(offset + 30, offset + 30 + nameLen);
+						var name = new TextDecoder().decode(nameBytes);
+						var dataStart = offset + 30 + nameLen + extraLen;
+						var dataEnd = dataStart + compSize;
+
+						if (name.toLowerCase() === targetPath.toLowerCase()) {
+							var compressedData = uint8Array.subarray(dataStart, dataEnd);
+							if (compMethod === 0) {
+								return new TextDecoder().decode(compressedData);
+							} else if (compMethod === 8 && typeof DecompressionStream !== 'undefined') {
+								var ds = new DecompressionStream('deflate-raw');
+								var writer = ds.writable.getWriter();
+								writer.write(compressedData);
+								writer.close();
+								var response = new Response(ds.readable);
+								return await response.text();
+							}
+						}
+						offset = dataEnd;
+					} else {
+						offset++;
+					}
+				}
+			} catch (e) {
+				console.warn('Zip read error:', e);
+			}
+			return null;
+		}
+
+		function parseDocxToHtml(xmlStr) {
+			if (!xmlStr) return '';
+			var pMatches = xmlStr.match(/<w:p\b[\s\S]*?<\/w:p>/g) || [];
+			var html = [];
+			for (var i = 0; i < pMatches.length; i++) {
+				var pStr = pMatches[i];
+				var isH1 = /<w:pStyle\b[^>]*w:val="Heading1"/i.test(pStr);
+				var isH2 = /<w:pStyle\b[^>]*w:val="Heading2"/i.test(pStr);
+				var isH3 = /<w:pStyle\b[^>]*w:val="Heading[3-6]"/i.test(pStr);
+				var rMatches = pStr.match(/<w:r\b[\s\S]*?<\/w:r>/g) || [];
+				var pText = '';
+				for (var j = 0; j < rMatches.length; j++) {
+					var rStr = rMatches[j];
+					var isBold = /<w:b\b/.test(rStr);
+					var isItalic = /<w:i\b/.test(rStr);
+					var tMatches = rStr.match(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g) || [];
+					for (var k = 0; k < tMatches.length; k++) {
+						var tVal = tMatches[k].replace(/<w:t\b[^>]*>|<\/w:t>/g, '');
+						tVal = tVal.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+						if (isBold) tVal = '<strong>' + tVal + '</strong>';
+						if (isItalic) tVal = '<em>' + tVal + '</em>';
+						pText += tVal;
+					}
+				}
+				if (pText.trim()) {
+					if (isH1) html.push('<h2 style="color:#111b21;margin:18px 0 8px;font-size:18px;font-weight:700;">' + pText + '</h2>');
+					else if (isH2) html.push('<h3 style="color:#111b21;margin:14px 0 6px;font-size:16px;font-weight:600;">' + pText + '</h3>');
+					else if (isH3) html.push('<h4 style="color:#111b21;margin:12px 0 4px;font-size:14px;font-weight:600;">' + pText + '</h4>');
+					else html.push('<p style="color:#222e35;margin:8px 0;line-height:1.65;font-size:13.5px;">' + pText + '</p>');
+				}
+			}
+			return html.join('');
+		}
+
+		function parseXlsxToHtml(sheetXml, stringsXml) {
+			if (!sheetXml) return '';
+			var sharedStrings = [];
+			if (stringsXml) {
+				var siMatches = stringsXml.match(/<si\b[\s\S]*?<\/si>/g) || [];
+				for (var s = 0; s < siMatches.length; s++) {
+					var tMatches = siMatches[s].match(/<t\b[^>]*>([\s\S]*?)<\/t>/g) || [];
+					var strVal = '';
+					for (var tm = 0; tm < tMatches.length; tm++) {
+						strVal += tMatches[tm].replace(/<t\b[^>]*>|<\/t>/g, '');
+					}
+					sharedStrings.push(strVal);
+				}
+			}
+
+			var rowMatches = sheetXml.match(/<row\b[\s\S]*?<\/row>/g) || [];
+			if (!rowMatches.length) return '<div style="padding:20px;color:#8696a0;">Lembar kerja kosong.</div>';
+
+			var colMap = {};
+			var parsedRows = [];
+
+			for (var r = 0; r < Math.min(rowMatches.length, 300); r++) {
+				var rStr = rowMatches[r];
+				var rowObj = {};
+				var cellMatches = rStr.match(/<c\b[\s\S]*?<\/c>|<c\b[^>]*\/>/g) || [];
+				for (var c = 0; c < cellMatches.length; c++) {
+					var cStr = cellMatches[c];
+					var refMatch = cStr.match(/r="([A-Z]+)(\d+)"/);
+					if (!refMatch) continue;
+					var colLetter = refMatch[1];
+					colMap[colLetter] = true;
+					var isShared = cStr.indexOf('t="s"') !== -1;
+					var vMatch = cStr.match(/<v>([\s\S]*?)<\/v>/);
+					var val = vMatch ? vMatch[1] : '';
+					if (isShared && sharedStrings[parseInt(val, 10)] !== undefined) {
+						val = sharedStrings[parseInt(val, 10)];
+					}
+					rowObj[colLetter] = val;
+				}
+				parsedRows.push(rowObj);
+			}
+
+			var cols = Object.keys(colMap).sort(function(a, b) {
+				if (a.length !== b.length) return a.length - b.length;
+				return a.localeCompare(b);
+			});
+			if (!cols.length) cols = ['A', 'B', 'C', 'D', 'E'];
+
+			var tableHtml = '<div style="width:100%;height:100%;overflow:auto;background:#111b21;">' +
+				'<table style="width:100%;border-collapse:collapse;font-family:system-ui,-apple-system,sans-serif;font-size:12px;color:#e9edef;table-layout:auto;">' +
+				'<thead><tr style="background:#202c33;position:sticky;top:0;z-index:2;box-shadow:0 1px 0 #2a3942;">' +
+				'<th style="width:40px;padding:6px 8px;border:1px solid #2a3942;color:#8696a0;text-align:center;font-weight:600;font-size:11px;">#</th>';
+
+			for (var ci = 0; ci < cols.length; ci++) {
+				tableHtml += '<th style="padding:6px 10px;border:1px solid #2a3942;color:#00a884;text-align:center;font-weight:600;min-width:90px;">' + cols[ci] + '</th>';
+			}
+			tableHtml += '</tr></thead><tbody>';
+
+			for (var ri = 0; ri < parsedRows.length; ri++) {
+				var row = parsedRows[ri];
+				var bg = ri % 2 === 0 ? '#111b21' : '#182229';
+				tableHtml += '<tr style="background:' + bg + ';">' +
+					'<td style="padding:5px 8px;border:1px solid #2a3942;color:#8696a0;text-align:center;font-weight:600;font-size:10.5px;">' + (ri + 1) + '</td>';
+				for (var cj = 0; cj < cols.length; cj++) {
+					var cellVal = row[cols[cj]] || '';
+					var escVal = cellVal.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+					tableHtml += '<td style="padding:6px 10px;border:1px solid #2a3942;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis;">' + escVal + '</td>';
+				}
+				tableHtml += '</tr>';
+			}
+
+			tableHtml += '</tbody></table></div>';
+			return tableHtml;
+		}
+
+		function parseCsvToHtml(csvText) {
+			if (!csvText) return '';
+			var lines = csvText.split(/\r?\n/).filter(function(l) { return l.trim().length > 0; });
+			if (!lines.length) return '<div style="padding:20px;color:#8696a0;">File CSV kosong.</div>';
+
+			var delimiter = lines[0].indexOf(';') !== -1 ? ';' : ',';
+			var tableHtml = '<div style="width:100%;height:100%;overflow:auto;background:#111b21;">' +
+				'<table style="width:100%;border-collapse:collapse;font-family:system-ui,-apple-system,sans-serif;font-size:12px;color:#e9edef;">' +
+				'<thead><tr style="background:#202c33;position:sticky;top:0;z-index:2;box-shadow:0 1px 0 #2a3942;">' +
+				'<th style="width:40px;padding:6px 8px;border:1px solid #2a3942;color:#8696a0;text-align:center;font-size:11px;">#</th>';
+
+			var headerCols = lines[0].split(delimiter);
+			for (var h = 0; h < headerCols.length; h++) {
+				var hName = headerCols[h].replace(/^["']|["']$/g, '').trim();
+				tableHtml += '<th style="padding:6px 10px;border:1px solid #2a3942;color:#00a884;text-align:left;font-weight:600;min-width:100px;">' + hName + '</th>';
+			}
+			tableHtml += '</tr></thead><tbody>';
+
+			for (var i = 1; i < Math.min(lines.length, 300); i++) {
+				var cols = lines[i].split(delimiter);
+				var bg = i % 2 === 0 ? '#111b21' : '#182229';
+				tableHtml += '<tr style="background:' + bg + ';"><td style="padding:5px 8px;border:1px solid #2a3942;color:#8696a0;text-align:center;font-size:10.5px;">' + i + '</td>';
+				for (var j = 0; j < headerCols.length; j++) {
+					var val = (cols[j] || '').replace(/^["']|["']$/g, '').trim();
+					val = val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+					tableHtml += '<td style="padding:6px 10px;border:1px solid #2a3942;white-space:nowrap;">' + val + '</td>';
+				}
+				tableHtml += '</tr>';
+			}
+			tableHtml += '</tbody></table></div>';
+			return tableHtml;
+		}
+
+		// In-App Document Preview Modal Overlay (PDF, Excel, Word, Text)
 		function showInAppDocModal(filename, blobUrl, savedPath, dataUri, ownedBlobUrl) {
 			var existing = document.getElementById('wa-doc-modal-overlay');
 			if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
 
-			// WKWebView does not provide Safari's built-in PDF renderer. On macOS,
-			// hand the saved file to PDFKit so the preview cannot remain blank.
-			if (filename && filename.toLowerCase().endsWith('.pdf') && savedPath && window.showPDFPreviewNative) {
+			var ext = (filename && filename.indexOf('.') !== -1 ? filename.split('.').pop() : '').toLowerCase();
+			var isPdf = ext === 'pdf';
+			var isExcel = ext === 'xlsx' || ext === 'xls' || ext === 'csv';
+			var isWord = ext === 'docx' || ext === 'doc' || ext === 'rtf' || ext === 'txt';
+
+			// On macOS, PDF can be previewed natively via PDFKit if available
+			if (isPdf && savedPath && window.showPDFPreviewNative) {
 				window.showPDFPreviewNative(savedPath);
 				if (ownedBlobUrl) {
 					try { URL.revokeObjectURL(ownedBlobUrl); } catch (e) {}
 				}
 				return;
+			}
+
+			var docIcon = '📄';
+			var openBtnText = '📂 Buka di Aplikasi Sistem (Preview)';
+			var docTypeLabel = 'Dokumen PDF';
+			if (isExcel) {
+				docIcon = '📊';
+				openBtnText = '📊 Buka di Excel / Numbers';
+				docTypeLabel = 'Lembar Kerja Excel';
+			} else if (isWord) {
+				docIcon = '📝';
+				openBtnText = '📝 Buka di Word / Pages';
+				docTypeLabel = 'Dokumen Word';
 			}
 
 			var overlay = document.createElement('div');
@@ -284,12 +497,15 @@ func getInitScript(ua string) string {
 			header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.08);background:#202c33;flex-shrink:0;';
 			header.innerHTML = '' +
 				'<div style="display:flex;align-items:center;gap:10px;min-width:0;">' +
-				'  <span style="font-size:20px;">📄</span>' +
-				'  <strong style="font-size:13.5px;color:#e9edef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:450px;" title="' + filename + '">' + filename + '</strong>' +
+				'  <span style="font-size:22px;">' + docIcon + '</span>' +
+				'  <div style="min-width:0;">' +
+				'    <strong style="font-size:13.5px;color:#e9edef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:420px;" title="' + filename + '">' + filename + '</strong>' +
+				'    <span style="font-size:11px;color:#8696a0;">' + docTypeLabel + ' · Pratinjau Langsung</span>' +
+				'  </div>' +
 				'</div>' +
 				'<div style="display:flex;align-items:center;gap:8px;">' +
 				'  <button id="wa-btn-open-preview" style="background:#00a884;color:#111b21;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;box-shadow:0 2px 6px rgba(0,168,132,0.3);">' +
-				'    📂 Buka di Aplikasi Sistem (Preview)' +
+				'    ' + openBtnText +
 				'  </button>' +
 				'  <button id="wa-btn-save-doc" style="background:#2a3942;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">' +
 				'    💾 Unduh' +
@@ -298,21 +514,109 @@ func getInitScript(ua string) string {
 				'</div>';
 			modal.appendChild(header);
 
-			// Body: iframe with PDF blobUrl/dataUri
+			// Body Container
 			var body = document.createElement('div');
-			body.style.cssText = 'flex:1;width:100%;height:100%;position:relative;background:#525659;overflow:hidden;display:flex;align-items:center;justify-content:center;';
-
-			var frameEl = document.createElement('iframe');
-			frameEl.src = blobUrl || dataUri;
-			frameEl.style.cssText = 'width:100%;height:100%;border:none;background:#ffffff;';
-			body.appendChild(frameEl);
+			body.style.cssText = 'flex:1;width:100%;height:100%;position:relative;background:#0c1317;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;';
 			modal.appendChild(body);
+
+			function triggerOpenSystem() {
+				if (savedPath && window.openFileNative) {
+					window.openFileNative(savedPath);
+				} else if (window.previewDocumentNative) {
+					window.previewDocumentNative(filename, dataUri || blobUrl);
+				}
+			}
+
+			function renderCardFallback(hint) {
+				body.innerHTML = '' +
+					'<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;">' +
+					'  <div style="font-size:64px;margin-bottom:16px;">' + docIcon + '</div>' +
+					'  <h2 style="color:#e9edef;font-size:17px;font-weight:600;margin:0 0 8px;">' + filename + '</h2>' +
+					'  <p style="color:#8696a0;font-size:12.5px;max-width:420px;line-height:1.5;margin:0 0 24px;">' +
+					(hint || ('Berkas ' + docTypeLabel + ' telah tersimpan di komputer Anda. Klik tombol di bawah untuk membukanya secara penuh.')) +
+					'  </p>' +
+					'  <button id="wa-btn-card-launch" style="background:#00a884;color:#111b21;border:none;padding:10px 24px;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,168,132,0.3);">' +
+					openBtnText +
+					'  </button>' +
+					'</div>';
+				var cardBtn = document.getElementById('wa-btn-card-launch');
+				if (cardBtn) cardBtn.onclick = triggerOpenSystem;
+			}
+
+			// Render content according to file type
+			if (isPdf) {
+				var frameEl = document.createElement('iframe');
+				frameEl.src = blobUrl || dataUri;
+				frameEl.style.cssText = 'width:100%;height:100%;border:none;background:#ffffff;';
+				body.appendChild(frameEl);
+			} else if (ext === 'csv') {
+				try {
+					var rawBase64 = (dataUri || '').split(',')[1] || '';
+					var csvText = atob(rawBase64);
+					body.innerHTML = parseCsvToHtml(csvText);
+				} catch (e) {
+					renderCardFallback();
+				}
+			} else if (ext === 'xlsx') {
+				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Memuat pratinjau Excel...</div>';
+				var uint8 = base64ToUint8Array(dataUri || '');
+				if (uint8) {
+					Promise.all([
+						readZipEntryText(uint8, 'xl/worksheets/sheet1.xml'),
+						readZipEntryText(uint8, 'xl/sharedStrings.xml')
+					]).then(function(res) {
+						var sheetXml = res[0];
+						var stringsXml = res[1];
+						if (sheetXml) {
+							body.innerHTML = parseXlsxToHtml(sheetXml, stringsXml);
+						} else {
+							renderCardFallback();
+						}
+					}).catch(function() {
+						renderCardFallback();
+					});
+				} else {
+					renderCardFallback();
+				}
+			} else if (ext === 'docx') {
+				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Memuat pratinjau Word...</div>';
+				var uint8Doc = base64ToUint8Array(dataUri || '');
+				if (uint8Doc) {
+					readZipEntryText(uint8Doc, 'word/document.xml').then(function(docXml) {
+						if (docXml) {
+							var docHtml = parseDocxToHtml(docXml);
+							body.innerHTML = '' +
+								'<div style="width:100%;height:100%;overflow-y:auto;padding:24px 16px;box-sizing:border-box;display:flex;justify-content:center;background:#0c1317;">' +
+								'  <div style="width:100%;max-width:760px;background:#ffffff;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,0.5);padding:40px 48px;box-sizing:border-box;min-height:90%;">' +
+								docHtml +
+								'  </div>' +
+								'</div>';
+						} else {
+							renderCardFallback();
+						}
+					}).catch(function() {
+						renderCardFallback();
+					});
+				} else {
+					renderCardFallback();
+				}
+			} else if (ext === 'txt') {
+				try {
+					var rawTxt = atob((dataUri || '').split(',')[1] || '');
+					body.innerHTML = '<div style="width:100%;height:100%;overflow:auto;padding:24px;box-sizing:border-box;background:#111b21;color:#e9edef;font-family:monospace;font-size:13px;line-height:1.6;white-space:pre-wrap;">' +
+						rawTxt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+						'</div>';
+				} catch (e) {
+					renderCardFallback();
+				}
+			} else {
+				renderCardFallback();
+			}
 
 			overlay.appendChild(modal);
 			document.body.appendChild(overlay);
 
 			function closeDocModal() {
-				frameEl.src = 'about:blank';
 				if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
 				if (ownedBlobUrl) {
 					try { URL.revokeObjectURL(ownedBlobUrl); } catch (e) {}
@@ -326,13 +630,7 @@ func getInitScript(ua string) string {
 				if (e.target === overlay) closeDocModal();
 			};
 
-			document.getElementById('wa-btn-open-preview').onclick = function() {
-				if (savedPath && window.openFileNative) {
-					window.openFileNative(savedPath);
-				} else if (window.previewDocumentNative) {
-					window.previewDocumentNative(filename, dataUri || blobUrl);
-				}
-			};
+			document.getElementById('wa-btn-open-preview').onclick = triggerOpenSystem;
 
 			document.getElementById('wa-btn-save-doc').onclick = function() {
 				if (dataUri && window.saveDownloadedFileNative) {
@@ -359,12 +657,24 @@ func getInitScript(ua string) string {
 		URL.createObjectURL = function(blob) {
 			var url = origCreateObjectURL.apply(this, arguments);
 			try {
-				if (blob && (blob.type === 'application/pdf' || (blob.type && blob.type.indexOf('pdf') >= 0) ||
-					(blob.type === 'application/octet-stream' && isRecentPDFIntent()))) {
-					var name = lastClickedDocName || 'dokumen.pdf';
-					if (!name.toLowerCase().endsWith('.pdf') && !name.includes('.')) name += '.pdf';
-					var previewBlob = blob.slice(0, blob.size, 'application/pdf');
-					var ownedBlobUrl = origCreateObjectURL(previewBlob);
+				var bType = (blob && blob.type) ? blob.type.toLowerCase() : '';
+				var isDocBlob = bType.indexOf('pdf') >= 0 || bType.indexOf('officedocument') >= 0 ||
+					bType.indexOf('msword') >= 0 || bType.indexOf('ms-excel') >= 0 ||
+					bType.indexOf('spreadsheet') >= 0 || bType.indexOf('wordprocessing') >= 0 ||
+					bType === 'text/csv' || bType === 'text/plain' ||
+					(blob && (blob.type === 'application/octet-stream' || bType === '') && isRecentPDFIntent());
+
+				if (blob && isDocBlob) {
+					var name = lastClickedDocName || 'dokumen';
+					if (!name.includes('.')) {
+						if (bType.indexOf('pdf') >= 0) name += '.pdf';
+						else if (bType.indexOf('sheet') >= 0 || bType.indexOf('excel') >= 0) name += '.xlsx';
+						else if (bType.indexOf('word') >= 0) name += '.docx';
+						else name += '.pdf';
+					}
+					var isPdf = name.toLowerCase().endsWith('.pdf');
+					var previewBlob = isPdf ? blob.slice(0, blob.size, 'application/pdf') : blob;
+					var ownedBlobUrl = isPdf ? origCreateObjectURL(previewBlob) : '';
 					var reader = new FileReader();
 					reader.onloadend = function() {
 						var base64data = reader.result;
@@ -387,12 +697,12 @@ func getInitScript(ua string) string {
 
 		function handleBlobDocumentPreview(blobUrl) {
 			var name = lastClickedDocName || 'dokumen.pdf';
-			if (!name.toLowerCase().endsWith('.pdf') && !name.includes('.')) name += '.pdf';
 			fetch(blobUrl)
 				.then(function(res) { return res.blob(); })
 				.then(function(blob) {
-					var previewBlob = blob.slice(0, blob.size, 'application/pdf');
-					var ownedBlobUrl = origCreateObjectURL(previewBlob);
+					var isPdf = name.toLowerCase().endsWith('.pdf');
+					var previewBlob = isPdf ? blob.slice(0, blob.size, 'application/pdf') : blob;
+					var ownedBlobUrl = isPdf ? origCreateObjectURL(previewBlob) : '';
 					var reader = new FileReader();
 					reader.onloadend = function() {
 						var base64data = reader.result;
@@ -870,8 +1180,9 @@ func getInitScript(ua string) string {
 						return response.blob();
 					})
 					.then(function(blob) {
-						var previewBlob = isDoc ? blob.slice(0, blob.size, 'application/pdf') : null;
-						var ownedBlobUrl = previewBlob ? origCreateObjectURL(previewBlob) : '';
+						var isPdf = filename.toLowerCase().endsWith('.pdf');
+						var previewBlob = isPdf ? blob.slice(0, blob.size, 'application/pdf') : blob;
+						var ownedBlobUrl = isPdf ? origCreateObjectURL(previewBlob) : '';
 						var reader = new FileReader();
 						reader.onloadend = function() {
 							var base64data = reader.result;
@@ -879,7 +1190,7 @@ func getInitScript(ua string) string {
 								window.saveDownloadedFileNative(filename, base64data).then(function(savedPath) {
 									if (savedPath) {
 										if (shouldAutoOpen) {
-										showInAppDocModal(filename, ownedBlobUrl || href, savedPath, base64data, ownedBlobUrl);
+											showInAppDocModal(filename, ownedBlobUrl || href, savedPath, base64data, ownedBlobUrl);
 											if (window.dismissStuckViewer) window.dismissStuckViewer();
 											showFloatingToast('📄 Pratinjau dibuka: ' + filename);
 										} else {
@@ -955,7 +1266,7 @@ func getInitScript(ua string) string {
 				if (clickedDoc) {
 					lastClickedDocName = foundName;
 					lastDocumentIntentAt = Date.now();
-					if (foundName.toLowerCase().endsWith('.pdf')) {
+					if (isDocumentFileName(foundName)) {
 						var directDownload = findDocumentDownloadControl(el);
 						if (directDownload && !directDownload.contains(el)) {
 							e.preventDefault();
