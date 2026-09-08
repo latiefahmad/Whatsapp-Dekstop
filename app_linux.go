@@ -3,6 +3,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -16,6 +17,9 @@ import (
 
 	webview "github.com/webview/webview_go"
 )
+
+//go:embed icon.png
+var embeddedIconPNG []byte
 
 const (
 	userAgentLinux = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
@@ -51,8 +55,20 @@ func getUserDataDir() string {
 	return dir
 }
 
-func showNativeNotification(title, message string) {
-	_ = exec.Command("notify-send", "-a", "WhatsApp Desk", title, message).Run()
+func ensureAppIconFileLinux(dir string) string {
+	iconPath := filepath.Join(dir, "app_icon.png")
+	if _, err := os.Stat(iconPath); os.IsNotExist(err) && len(embeddedIconPNG) > 0 {
+		_ = os.WriteFile(iconPath, embeddedIconPNG, 0644)
+	}
+	return iconPath
+}
+
+func showNativeNotification(title, message, iconPath string) {
+	if iconPath != "" {
+		_ = exec.Command("notify-send", "-a", "WhatsApp Desk", "-i", iconPath, title, message).Run()
+	} else {
+		_ = exec.Command("notify-send", "-a", "WhatsApp Desk", title, message).Run()
+	}
 }
 
 func toggleAlwaysOnTopLinux() bool {
@@ -193,9 +209,11 @@ func runApp() {
 		saveWindowState(userDataDir, width, height)
 	})
 
+	iconPath := ensureAppIconFileLinux(userDataDir)
+
 	// Bind native notification bridge
 	_ = w.Bind("sendNativeNotification", func(title, body string) {
-		go showNativeNotification(title, body)
+		go showNativeNotification(title, body, iconPath)
 	})
 
 	// Bind external link handler (xdg-open)

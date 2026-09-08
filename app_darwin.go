@@ -54,7 +54,7 @@ static void triggerNativeMemoryPurge(void) {
 }
 @end
 
-@interface WhatsAppAppDelegate : NSObject <NSApplicationDelegate>
+@interface WhatsAppAppDelegate : NSObject <NSApplicationDelegate, NSUserNotificationCenterDelegate>
 @property (assign) NSWindow *window;
 @end
 
@@ -66,7 +66,34 @@ static void triggerNativeMemoryPurge(void) {
     }
     return YES;
 }
+
+- (BOOL)userNotificationCenter:(NSUserNotificationCenter *)center shouldPresentNotification:(NSUserNotification *)notification {
+    return YES;
+}
+
+- (void)userNotificationCenter:(NSUserNotificationCenter *)center didActivateNotification:(NSUserNotification *)notification {
+    if (self.window) {
+        [self.window makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+    }
+}
 @end
+
+static void postNativeMacNotification(const char* titleStr, const char* bodyStr) {
+    @autoreleasepool {
+        NSUserNotification *notification = [[NSUserNotification alloc] init];
+        if (titleStr && strlen(titleStr) > 0) {
+            notification.title = [NSString stringWithUTF8String:titleStr];
+        } else {
+            notification.title = @"WhatsApp Desk";
+        }
+        if (bodyStr && strlen(bodyStr) > 0) {
+            notification.informativeText = [NSString stringWithUTF8String:bodyStr];
+        }
+        notification.soundName = NSUserNotificationDefaultSoundName;
+        [[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:notification];
+    }
+}
 
 @interface WhatsAppUIDelegate : NSObject <WKUIDelegate>
 @end
@@ -163,6 +190,7 @@ static void configureWindowBehavior(void* nsWindowPtr) {
         g_appDelegate = [[WhatsAppAppDelegate alloc] init];
         g_appDelegate.window = win;
         [NSApp setDelegate:g_appDelegate];
+        [[NSUserNotificationCenter defaultUserNotificationCenter] setDelegate:g_appDelegate];
     }
 }
 
@@ -705,8 +733,11 @@ func toggleAutoStartMac() bool {
 }
 
 func showNativeNotification(title, message string) {
-	script := fmt.Sprintf(`display notification %q with title %q`, message, title)
-	_ = exec.Command("osascript", "-e", script).Run()
+	cTitle := C.CString(title)
+	defer C.free(unsafe.Pointer(cTitle))
+	cMsg := C.CString(message)
+	defer C.free(unsafe.Pointer(cMsg))
+	C.postNativeMacNotification(cTitle, cMsg)
 }
 
 func runApp() {

@@ -3,6 +3,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -19,6 +20,9 @@ import (
 	"github.com/jchv/go-webview2"
 	"golang.org/x/sys/windows"
 )
+
+//go:embed icon.png
+var embeddedIconPNG []byte
 
 var (
 	kernel32                     = windows.NewLazySystemDLL("kernel32.dll")
@@ -184,34 +188,71 @@ type RECT struct {
 	Left, Top, Right, Bottom int32
 }
 
-func setDarkWindowFrame(hwnd uintptr) {
-	darkMode := int32(1)
-	// Try standard DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 20H1+ & Win11)
+func isWindowsSystemDarkTheme() bool {
+	advapi32 := windows.NewLazySystemDLL("advapi32.dll")
+	procRegOpenKeyExW := advapi32.NewProc("RegOpenKeyExW")
+	procRegQueryValueExW := advapi32.NewProc("RegQueryValueExW")
+	procRegCloseKey := advapi32.NewProc("RegCloseKey")
+
+	const HKEY_CURRENT_USER = uintptr(0x80000001)
+	const KEY_READ = uintptr(0x20019)
+
+	subKey, _ := syscall.UTF16PtrFromString(`Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`)
+	var hKey uintptr
+	ret, _, _ := procRegOpenKeyExW.Call(HKEY_CURRENT_USER, uintptr(unsafe.Pointer(subKey)), 0, KEY_READ, uintptr(unsafe.Pointer(&hKey)))
+	if ret != 0 {
+		return true // default dark
+	}
+	defer procRegCloseKey.Call(hKey)
+
+	valName, _ := syscall.UTF16PtrFromString("AppsUseLightTheme")
+	var valType uint32
+	var valData uint32
+	valSize := uint32(unsafe.Sizeof(valData))
+
+	ret, _, _ = procRegQueryValueExW.Call(hKey, uintptr(unsafe.Pointer(valName)), 0, uintptr(unsafe.Pointer(&valType)), uintptr(unsafe.Pointer(&valData)), uintptr(unsafe.Pointer(&valSize)))
+	if ret != 0 {
+		return true
+	}
+	return valData == 0 // 0 = dark, 1 = light
+}
+
+func applyNativeThemeWin(hwnd uintptr, theme string) {
+	isDark := false
+	if theme == "system" {
+		isDark = isWindowsSystemDarkTheme()
+	} else {
+		isDark = (theme == "dark")
+	}
+
+	darkMode := int32(0)
+	captionColor := uint32(0x00F5F2F0) // WhatsApp Light Header: RGB(240, 242, 245) -> 0x00BBGGRR = 0x00F5F2F0
+	textColor := uint32(0x00211B11)    // WhatsApp Dark Text: RGB(17, 27, 33) -> 0x00BBGGRR = 0x00211B11
+
+	if isDark {
+		darkMode = 1
+		captionColor = 0x00211B11 // WhatsApp Dark Header: RGB(17, 27, 33) -> 0x00BBGGRR = 0x00211B11
+		textColor = 0x00FFFFFF    // White text
+	}
+
 	procDwmSetAttr.Call(
 		hwnd,
 		uintptr(DWMWA_USE_IMMERSIVE_DARK_MODE),
 		uintptr(unsafe.Pointer(&darkMode)),
 		unsafe.Sizeof(darkMode),
 	)
-	// Try older Win10 build
 	procDwmSetAttr.Call(
 		hwnd,
 		uintptr(DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1),
 		uintptr(unsafe.Pointer(&darkMode)),
 		unsafe.Sizeof(darkMode),
 	)
-
-	// Set dark caption color (COLORREF: 0x00111B21 WhatsApp Dark Header: RGB 17, 27, 33)
-	captionColor := uint32(0x00211B11) // 0x00BBGGRR
 	procDwmSetAttr.Call(
 		hwnd,
 		uintptr(DWMWA_CAPTION_COLOR),
 		uintptr(unsafe.Pointer(&captionColor)),
 		unsafe.Sizeof(captionColor),
 	)
-
-	// Set white caption text (RGB 255, 255, 255)
-	textColor := uint32(0x00FFFFFF)
 	procDwmSetAttr.Call(
 		hwnd,
 		uintptr(DWMWA_TEXT_COLOR),
@@ -248,18 +289,29 @@ func getUserDataDir() string {
 	return dir
 }
 
-func showNativeNotification(title, message, iconPath string) {
+func ensureAppIconFile(dir string) string {
+	iconPath := filepath.Join(dir, "app_icon.png")
+	if _, err := os.Stat(iconPath); os.IsNotExist(err) && len(embeddedIconPNG) > 0 {
+		_ = os.WriteFile(iconPath, embeddedIconPNG, 0644)
+	}
+	return iconPath
+}
+
+func showNativeNotification(title, message, iconPath, exePath string) {
 	notification := toast.Notification{
-		AppID:   "WhatsApp Desk",
-		Title:   title,
-		Message: message,
-		Icon:    iconPath,
+		AppID:               "WhatsApp Desk",
+		Title:               title,
+		Message:             message,
+		Icon:                iconPath,
+		ActivationType:      "protocol",
+		ActivationArguments: exePath,
 	}
 	_ = notification.Push()
 }
 
 func configureWindow(hwnd uintptr) {
-	setDarkWindowFrame(hwnd)
+	s := loadSettings()
+	applyNativeThemeWin(hwnd, s.Theme)
 
 	// Ensure sizing border and maximize/minimize buttons are enabled
 	gwlStyle := uintptr(GWL_STYLE)
@@ -326,7 +378,7 @@ func runApp() {
 	}
 	userDataDir := getUserDataDir()
 	executablePath, _ := os.Executable()
-	iconFullPath := filepath.Join(filepath.Dir(executablePath), "icon.ico")
+	iconFullPath := ensureAppIconFile(userDataDir)
 
 	opts := webview2.WebViewOptions{
 		Window:    nil,
@@ -380,7 +432,7 @@ func runApp() {
 
 	// Bind native notification bridge
 	_ = w.Bind("sendNativeNotification", func(title, body string) {
-		go showNativeNotification(title, body, iconFullPath)
+		go showNativeNotification(title, body, iconFullPath, executablePath)
 	})
 
 	// Bind external link handler to open links in default Windows browser
@@ -469,7 +521,9 @@ func runApp() {
 	})
 
 	_ = w.Bind("setAppThemeNative", func(theme string) string {
-		return saveTheme(theme)
+		saved := saveTheme(theme)
+		applyNativeThemeWin(hwnd, saved)
+		return saved
 	})
 
 	w.Init(getInitScript(userAgent))

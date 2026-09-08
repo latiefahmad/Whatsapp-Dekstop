@@ -124,21 +124,28 @@ func getInitScript(ua string) string {
 			}
 		} catch (e) {}
 
-		// Native Notification Polyfill
+		// Native Notification Polyfill & ServiceWorker Notification Interceptor
 		(function() {
-			window.Notification = function(title, options) {
+			function dispatchNativeNotification(title, options) {
 				options = options || {};
 				var body = options.body || '';
 				if (window.sendNativeNotification) {
 					window.sendNativeNotification(title, body);
 				}
+			}
+
+			window.Notification = function(title, options) {
+				options = options || {};
+				dispatchNativeNotification(title, options);
 				this.title = title;
+				this.body = options.body || '';
 				this.onclick = null;
 				this.onclose = null;
 				this.onerror = null;
 				this.onshow = null;
 			};
 			window.Notification.permission = 'granted';
+			window.Notification.maxActions = 2;
 			window.Notification.requestPermission = function(callback) {
 				var p = Promise.resolve('granted');
 				if (typeof callback === 'function') {
@@ -146,6 +153,15 @@ func getInitScript(ua string) string {
 				}
 				return p;
 			};
+
+			try {
+				if (typeof ServiceWorkerRegistration !== 'undefined' && ServiceWorkerRegistration.prototype) {
+					ServiceWorkerRegistration.prototype.showNotification = function(title, options) {
+						dispatchNativeNotification(title, options);
+						return Promise.resolve();
+					};
+				}
+			} catch (e) {}
 		})();
 
 		// Track clicked document filenames for preview and download
@@ -802,17 +818,51 @@ func getInitScript(ua string) string {
 		(function() {
 			var isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 			var currentTheme = 'dark';
+			var themeObserver = null;
+
+			// --- Override window.matchMedia for prefers-color-scheme ---
+			var origMatchMedia = window.matchMedia;
+			if (origMatchMedia) {
+				window.matchMedia = function(query) {
+					var res = origMatchMedia.apply(this, arguments);
+					if (query && query.indexOf('prefers-color-scheme') >= 0) {
+						var isDarkQuery = query.indexOf('dark') >= 0;
+						var forcedMatches = isDarkQuery;
+						if (currentTheme === 'light') {
+							forcedMatches = !isDarkQuery;
+						} else if (currentTheme === 'dark') {
+							forcedMatches = isDarkQuery;
+						} else {
+							forcedMatches = res.matches;
+						}
+
+						return {
+							matches: forcedMatches,
+							media: query,
+							addEventListener: function(t, fn) { res.addEventListener ? res.addEventListener(t, fn) : (res.addListener && res.addListener(fn)); },
+							removeEventListener: function(t, fn) { res.removeEventListener ? res.removeEventListener(t, fn) : (res.removeListener && res.removeListener(fn)); },
+							addListener: function(fn) { if (res.addListener) res.addListener(fn); },
+							removeListener: function(fn) { if (res.removeListener) res.removeListener(fn); },
+							onchange: null
+						};
+					}
+					return res;
+				};
+			}
 
 			// --- Theme Management ---
+			function getSystemIsDark() {
+				if (origMatchMedia) {
+					return origMatchMedia.call(window, '(prefers-color-scheme: dark)').matches;
+				}
+				return true;
+			}
+
 			function applyThemeToDOM(theme) {
 				currentTheme = theme;
-				var isDark = false;
-				if (theme === 'system') {
-					isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-				} else {
-					isDark = (theme === 'dark');
-				}
+				var isDark = (theme === 'system') ? getSystemIsDark() : (theme === 'dark');
 
+				// 1. Update documentElement & body classes
 				if (isDark) {
 					document.documentElement.classList.add('dark');
 					document.documentElement.classList.remove('light');
@@ -833,9 +883,36 @@ func getInitScript(ua string) string {
 					document.documentElement.style.colorScheme = 'light';
 				}
 
-				// Update modal if currently visible
+				// 2. Synchronize WhatsApp Web's own localStorage keys
+				try {
+					if (theme === 'system') {
+						localStorage.setItem('system-theme-mode', 'true');
+						localStorage.setItem('theme', JSON.stringify(isDark ? 'dark' : 'light'));
+					} else {
+						localStorage.setItem('system-theme-mode', 'false');
+						localStorage.setItem('theme', JSON.stringify(theme));
+					}
+				} catch(e) {}
+
+				// 3. Update modal if visible
 				if (window.syncModalTheme) {
 					window.syncModalTheme(isDark);
+				}
+
+				// 4. Ensure MutationObserver prevents WhatsApp from reverting body theme class
+				if (window.MutationObserver && document.body) {
+					if (!themeObserver) {
+						themeObserver = new MutationObserver(function() {
+							var shouldBeDark = (currentTheme === 'system') ? getSystemIsDark() : (currentTheme === 'dark');
+							if (shouldBeDark && !document.body.classList.contains('dark')) {
+								document.body.classList.add('dark');
+							} else if (!shouldBeDark && document.body.classList.contains('dark')) {
+								document.body.classList.remove('dark');
+							}
+						});
+					}
+					themeObserver.disconnect();
+					themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 				}
 			}
 
@@ -848,32 +925,45 @@ func getInitScript(ua string) string {
 					theme = 'dark';
 				}
 				applyThemeToDOM(theme);
-				try {
-					localStorage.setItem('theme', JSON.stringify(theme));
-				} catch(e) {}
 				if (window.setAppThemeNative) {
 					window.setAppThemeNative(theme);
 				}
 				showFloatingToast(theme === 'dark' ? '🌙 Tema: Mode Gelap' : (theme === 'light' ? '☀️ Tema: Mode Terang' : '💻 Tema: Mengikuti Sistem'));
 			};
 
-			// Listen for system appearance changes when in system mode
-			if (window.matchMedia) {
-				window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+			// Listen for system appearance changes
+			if (origMatchMedia) {
+				var sysMedia = origMatchMedia.call(window, '(prefers-color-scheme: dark)');
+				var onSysChange = function() {
 					if (currentTheme === 'system') {
 						applyThemeToDOM('system');
 					}
-				});
+				};
+				if (sysMedia.addEventListener) {
+					sysMedia.addEventListener('change', onSysChange);
+				} else if (sysMedia.addListener) {
+					sysMedia.addListener(onSysChange);
+				}
 			}
 
-			// Load saved theme from native settings
-			if (window.getAppThemeNative) {
-				window.getAppThemeNative().then(function(savedTheme) {
-					if (savedTheme) {
-						applyThemeToDOM(savedTheme);
-					}
-				});
+			// Load saved theme from native settings and keep synced
+			function initTheme() {
+				if (window.getAppThemeNative) {
+					window.getAppThemeNative().then(function(savedTheme) {
+						if (savedTheme) {
+							applyThemeToDOM(savedTheme);
+						}
+					});
+				}
 			}
+			initTheme();
+			document.addEventListener('DOMContentLoaded', initTheme);
+			window.addEventListener('load', initTheme);
+			setInterval(function() {
+				if (document.body && !themeObserver) {
+					applyThemeToDOM(currentTheme);
+				}
+			}, 2000);
 
 			// --- In-Flow Header Toolbar Button (Non-Floating, Clean WhatsApp Style) ---
 			function injectHeaderToolbarBtn() {
