@@ -105,8 +105,10 @@ func toggleAutoStartWindows() bool {
 }
 
 const (
-	JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
-	JobObjectExtendedLimitInformation  = 9
+	JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE   = 0x00002000
+	JOB_OBJECT_LIMIT_BREAKAWAY_OK        = 0x00000800
+	JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK = 0x00001000
+	JobObjectExtendedLimitInformation    = 9
 )
 
 type IO_COUNTERS struct {
@@ -140,13 +142,15 @@ type JOBOBJECT_EXTENDED_LIMIT_INFORMATION struct {
 }
 
 func initWindowsProcessProtection() {
-	// 1. Assign process to Job Object with KILL_ON_JOB_CLOSE so Windows kernel
-	// automatically kills all child msedgewebview2.exe processes on exit or crash.
-	// This permanently prevents orphaned "WebView2 Manager" processes in RAM.
+	// 1. Assign process to Job Object with KILL_ON_JOB_CLOSE and SILENT_BREAKAWAY_OK.
+	// CRITICAL: JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK and JOB_OBJECT_LIMIT_BREAKAWAY_OK
+	// are strictly required so that Chromium / WebView2 child processes (GPU, Renderer)
+	// can create their own sandboxed Job Objects. Without breakaway, Chromium fails to
+	// spawn renderer/GPU processes (ERROR_ACCESS_DENIED), resulting in a solid black screen.
 	job, _, _ := procCreateJobObject.Call(0, 0)
 	if job != 0 {
 		var info JOBOBJECT_EXTENDED_LIMIT_INFORMATION
-		info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+		info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK | JOB_OBJECT_LIMIT_BREAKAWAY_OK
 		procSetInformationJobObject.Call(
 			job,
 			uintptr(JobObjectExtendedLimitInformation),
@@ -157,31 +161,18 @@ func initWindowsProcessProtection() {
 		procAssignProcessToJobObject.Call(job, curProc)
 	}
 
-	// 2. Configure WebView2 / Chromium engine arguments for aggressive memory & cache limits:
-	// - Limit V8 JS heap to 256MB and optimize for memory footprint
-	// - Cap disk cache to 32MB and media cache to 16MB
-	// - Disable background telemetry, component updates (which caused 8.8 MB/s disk I/O), and caching
+	// 2. Configure safe WebView2 / Chromium engine arguments:
+	// Use only reliable, well-tested flags. Avoid nested quotes in --js-flags and
+	// do NOT disable window occlusion or GPU shader cache, which cause
+	// black screen / compositor initialization failures on Windows 10 & 11.
 	browserArgs := []string{
-		"--disable-features=Translate,OptimizationHints,MediaRouter,CalculateNativeWinOcclusion,BackForwardCache,InterestFeedContentSuggestions",
-		"--disk-cache-size=33554432",                                  // Cap disk cache to 32MB
-		"--media-cache-size=16777216",                                 // Cap media cache to 16MB
-		"--js-flags=\"--max-old-space-size=256 --optimize_for_size --expose-gc\"", // Cap V8 JS heap to 256MB & expose GC
-		"--disable-gpu-shader-disk-cache",
+		"--disable-features=Translate,MediaRouter",
 		"--disable-background-networking",
 		"--disable-component-update",
 		"--disable-domain-reliability",
 		"--disable-sync",
-		"--renderer-process-limit=1",
-		"--disable-site-isolation-trials",
-		"--disable-speech-api",
 	}
 	_ = os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", strings.Join(browserArgs, " "))
-
-	// 3. Clean up any leftover orphaned WebView2 instances from previous sessions
-	go func() {
-		psCmd := `Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" | Where-Object { $_.CommandLine -like "*WhatsAppDesk*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`
-		_ = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", psCmd).Run()
-	}()
 }
 
 type RECT struct {
@@ -419,20 +410,15 @@ func runApp() {
 		}
 	}()
 
-	// Periodic Working Set & Go runtime memory cleanup (every 60s)
-	go func() {
-		ticker := time.NewTicker(60 * time.Second)
-		defer ticker.Stop()
-		curProc, _, _ := procGetCurrentProcess.Call()
-		for range ticker.C {
-			debug.FreeOSMemory()
-			procSetProcessWorkingSetSize.Call(curProc, ^uintptr(0), ^uintptr(0))
-		}
-	}()
-
 	// Bind native notification bridge
 	_ = w.Bind("sendNativeNotification", func(title, body string) {
 		go showNativeNotification(title, body, iconFullPath, executablePath)
+	})
+
+	_ = w.Bind("releaseMemoryNative", func() {
+		debug.FreeOSMemory()
+		curProc, _, _ := procGetCurrentProcess.Call()
+		procSetProcessWorkingSetSize.Call(curProc, ^uintptr(0), ^uintptr(0))
 	})
 
 	// Bind external link handler to open links in default Windows browser

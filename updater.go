@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,7 +20,7 @@ type UIController interface {
 }
 
 const (
-	appVersion = "1.5.2"
+	appVersion = "1.5.3"
 	githubRepo = "vianziro/Whatsapp-Dekstop"
 )
 
@@ -81,27 +82,51 @@ func isNewerVersion(current, latest string) bool {
 }
 
 func findAssetForCurrentOS(release *GitHubRelease) *GitHubAsset {
-	if runtime.GOOS == "darwin" {
+	return findAssetForOS(release, runtime.GOOS)
+}
+
+func findAssetForOS(release *GitHubRelease, goos string) *GitHubAsset {
+	if goos == "darwin" {
 		for _, a := range release.Assets {
 			if strings.HasSuffix(strings.ToLower(a.Name), ".zip") {
 				return &a
 			}
 		}
-	} else if runtime.GOOS == "windows" {
+	} else if goos == "windows" {
 		for _, a := range release.Assets {
 			if strings.HasSuffix(strings.ToLower(a.Name), ".exe") {
 				return &a
 			}
 		}
-	} else if runtime.GOOS == "linux" {
+	} else if goos == "linux" {
 		for _, a := range release.Assets {
 			name := strings.ToLower(a.Name)
-			if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".deb") || (strings.Contains(name, "linux") && !strings.HasSuffix(name, ".zip")) {
+			if strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".tgz") {
 				return &a
 			}
 		}
 	}
 	return nil
+}
+
+func updateDownloadExtension(downloadURL string) string {
+	parsed, err := url.Parse(downloadURL)
+	if err == nil {
+		path := strings.ToLower(parsed.Path)
+		if strings.HasSuffix(path, ".tar.gz") {
+			return ".tar.gz"
+		}
+		if ext := filepath.Ext(path); ext == ".zip" || ext == ".exe" || ext == ".tgz" {
+			return ext
+		}
+	}
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	if runtime.GOOS == "linux" {
+		return ".tar.gz"
+	}
+	return ".zip"
 }
 
 func checkForUpdate(currentVer string) (*UpdateInfo, error) {
@@ -201,10 +226,7 @@ func downloadFileWithProgress(url, destPath string, onProgress func(int)) error 
 }
 
 func executeUpdate(ui UIController, downloadURL string) error {
-	ext := ".zip"
-	if runtime.GOOS == "windows" {
-		ext = ".exe"
-	}
+	ext := updateDownloadExtension(downloadURL)
 	destFile := filepath.Join(os.TempDir(), "whatsapp_update_download"+ext)
 	_ = os.Remove(destFile)
 
@@ -231,4 +253,3 @@ func executeUpdate(ui UIController, downloadURL string) error {
 	time.Sleep(600 * time.Millisecond)
 	return applyUpdate(destFile)
 }
-

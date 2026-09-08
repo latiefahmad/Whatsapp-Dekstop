@@ -4,10 +4,11 @@ package main
 
 /*
 #cgo darwin CFLAGS: -x objective-c
-#cgo darwin LDFLAGS: -framework Cocoa -framework WebKit
+#cgo darwin LDFLAGS: -framework Cocoa -framework WebKit -framework PDFKit
 
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
+#import <PDFKit/PDFKit.h>
 #include <stdlib.h>
 
 static void configureWebKitMemoryLimits(void) {
@@ -119,15 +120,21 @@ static void postNativeMacNotification(const char* titleStr, const char* bodyStr)
 static WhatsAppAppDelegate* g_appDelegate = nil;
 static WhatsAppWindowDelegate* g_windowDelegate = nil;
 static WhatsAppUIDelegate* g_uiDelegate = nil;
+static NSWindow* g_pdfPreviewWindow = nil;
+static NSWindow* g_mainWindow = nil;
+static WKWebView* g_mainWebView = nil;
+
+static WKWebView* findWKWebView(NSView* view);
 
 static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) {
     @autoreleasepool {
         configureWebKitMemoryLimits();
-
         NSWindow* win = (__bridge NSWindow*)nsWindowPtr;
+        g_mainWindow = win;
         NSView* contentView = [win contentView];
-        if ([contentView isKindOfClass:[WKWebView class]]) {
-            WKWebView* wv = (WKWebView*)contentView;
+        WKWebView* wv = [contentView isKindOfClass:[WKWebView class]] ? (WKWebView*)contentView : findWKWebView(contentView);
+        if (wv) {
+            g_mainWebView = wv;
             [wv setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
             NSString* ua = [NSString stringWithUTF8String:uaStr];
             [wv setCustomUserAgent:ua];
@@ -161,6 +168,12 @@ static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) 
 static void configureWindowBehavior(void* nsWindowPtr) {
     @autoreleasepool {
         NSWindow* win = (__bridge NSWindow*)nsWindowPtr;
+        g_mainWindow = win;
+        NSView* cv = [win contentView];
+        WKWebView* wv = [cv isKindOfClass:[WKWebView class]] ? (WKWebView*)cv : findWKWebView(cv);
+        if (wv) {
+            g_mainWebView = wv;
+        }
 
         // Ensure window is fully resizable, minimizable, and supports fullscreen
         NSWindowStyleMask mask = [win styleMask];
@@ -247,6 +260,136 @@ static WKWebView* findWKWebView(NSView* view) {
     return nil;
 }
 
+// Menu commands may run while the menu bar owns focus, so keyWindow/mainWindow
+// can temporarily be nil. Keep the configured application window as the source
+// of truth and only use AppKit's active-window lookup as a fallback.
+static NSWindow* appWindow(void) {
+    if (g_mainWindow) {
+        return g_mainWindow;
+    }
+    if (g_appDelegate && g_appDelegate.window) {
+        return g_appDelegate.window;
+    }
+    for (NSWindow* w in [NSApp windows]) {
+        if (![w isKindOfClass:[NSPanel class]] && [w canBecomeKeyWindow]) {
+            return w;
+        }
+    }
+    return [NSApp keyWindow] ?: [NSApp mainWindow];
+}
+
+static WKWebView* appWebView(void) {
+    if (g_mainWebView) {
+        return g_mainWebView;
+    }
+    NSWindow* win = appWindow();
+    if (!win) return nil;
+    NSView* cv = [win contentView];
+    WKWebView* wv = [cv isKindOfClass:[WKWebView class]] ? (WKWebView*)cv : findWKWebView(cv);
+    if (wv) g_mainWebView = wv;
+    return wv;
+}
+
+static void showAppWindow(void) {
+    NSWindow* win = appWindow();
+    if (win) {
+        if ([win isMiniaturized]) {
+            [win deminiaturize:nil];
+        }
+        [win makeKeyAndOrderFront:nil];
+        [win setIsVisible:YES];
+    }
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
+static void evaluateAppJavaScript(NSString* script) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        showAppWindow();
+        WKWebView* wv = appWebView();
+        if (wv) {
+            NSString* wrapped = [NSString stringWithFormat:@"(function(){ try { %@ } catch(e){ console.error(e); } })(); void 0;", script];
+            [wv evaluateJavaScript:wrapped completionHandler:^(id result, NSError *error) {
+                if (error) {
+                    NSLog(@"[WhatsApp Desk] JS evaluation error: %@ for script: %@", error, script);
+                }
+            }];
+        } else {
+            NSLog(@"[WhatsApp Desk] Error: WKWebView not found for script: %@", script);
+        }
+    });
+}
+
+static void openDownloadsFolderNative(void) {
+    @autoreleasepool {
+        NSString *downloads = [NSSearchPathForDirectoriesInDomains(NSDownloadsDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *targetFolder = [downloads stringByAppendingPathComponent:@"WhatsApp Downloads"];
+
+        NSString *support = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
+        NSString *settingsFile = [support stringByAppendingPathComponent:@"WhatsAppDesktopLight/settings.json"];
+        if ([[NSFileManager defaultManager] fileExistsAtPath:settingsFile]) {
+            NSData *data = [NSData dataWithContentsOfFile:settingsFile];
+            if (data) {
+                NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+                if (json && [json objectForKey:@"download_dir"]) {
+                    NSString *custom = [json objectForKey:@"download_dir"];
+                    if ([custom length] > 0) targetFolder = custom;
+                }
+            }
+        }
+
+        BOOL isDir = NO;
+        if (![[NSFileManager defaultManager] fileExistsAtPath:targetFolder isDirectory:&isDir]) {
+            [[NSFileManager defaultManager] createDirectoryAtPath:targetFolder withIntermediateDirectories:YES attributes:nil error:nil];
+        }
+
+        [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:targetFolder]];
+        [[NSWorkspace sharedWorkspace] activateFileViewerSelectingURLs:@[[NSURL fileURLWithPath:targetFolder]]];
+    }
+}
+
+static BOOL showNativePDFPreview(const char* pathStr) {
+    if (!pathStr || strlen(pathStr) == 0) return NO;
+    NSString* path = [NSString stringWithUTF8String:pathStr];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:path]) return NO;
+
+    void (^showPreview)(void) = ^{
+        @autoreleasepool {
+            NSURL* url = [NSURL fileURLWithPath:path];
+            PDFDocument* document = [[PDFDocument alloc] initWithURL:url];
+            if (!document) return;
+
+            if (!g_pdfPreviewWindow) {
+                NSRect frame = NSMakeRect(0, 0, 920, 760);
+                g_pdfPreviewWindow = [[NSWindow alloc]
+                    initWithContentRect:frame
+                    styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+                               NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
+                    backing:NSBackingStoreBuffered
+                    defer:NO];
+                [g_pdfPreviewWindow setReleasedWhenClosed:NO];
+                [g_pdfPreviewWindow center];
+            }
+
+            PDFView* pdfView = [[PDFView alloc] initWithFrame:[[g_pdfPreviewWindow contentView] bounds]];
+            [pdfView setAutoresizingMask:(NSViewWidthSizable | NSViewHeightSizable)];
+            [pdfView setAutoScales:YES];
+            [pdfView setDisplayMode:kPDFDisplaySinglePageContinuous];
+            [pdfView setDocument:document];
+            [g_pdfPreviewWindow setContentView:pdfView];
+            [g_pdfPreviewWindow setTitle:[path lastPathComponent]];
+            [g_pdfPreviewWindow makeKeyAndOrderFront:nil];
+            [NSApp activateIgnoringOtherApps:YES];
+        }
+    };
+
+    if ([NSThread isMainThread]) {
+        showPreview();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), showPreview);
+    }
+    return YES;
+}
+
 static void setNativeWindowTheme(void* nsWindowPtr, const char* themeStr) {
     @autoreleasepool {
         NSWindow* win = (__bridge NSWindow*)nsWindowPtr;
@@ -279,104 +422,69 @@ static void setNativeWindowTheme(void* nsWindowPtr, const char* themeStr) {
 
 @implementation MenuBridge
 - (void)menuSettings:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
-        if (wv) {
-            [wv evaluateJavaScript:@"if (window.showSettingsModal) window.showSettingsModal();" completionHandler:nil];
-        }
-    }
+    evaluateAppJavaScript(@"if (window.showSettingsModal) { window.showSettingsModal(); }");
 }
 - (void)menuCheckUpdates:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
-        if (wv) {
-            [wv evaluateJavaScript:@"if (window.triggerCheckForUpdate) window.triggerCheckForUpdate();" completionHandler:nil];
-        }
-    }
+    evaluateAppJavaScript(@"if (window.triggerCheckForUpdate) { window.triggerCheckForUpdate(); }");
 }
 - (void)menuOpenDownloads:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
-        if (wv) {
-            [wv evaluateJavaScript:@"if (window.openDownloadDirNative) window.openDownloadDirNative();" completionHandler:nil];
-        }
-    }
+    openDownloadsFolderNative();
 }
 - (void)menuTogglePrivacy:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
-        if (wv) {
-            [wv evaluateJavaScript:@"if (window.togglePrivacyMode) window.togglePrivacyMode();" completionHandler:nil];
-        }
-    }
+    evaluateAppJavaScript(@"if (window.togglePrivacyMode) { window.togglePrivacyMode(); }");
 }
 - (void)menuToggleAlwaysOnTop:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
+    NSWindow* win = appWindow();
     if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
-        if (wv) {
-            [wv evaluateJavaScript:@"if (window.toggleAlwaysOnTop) window.toggleAlwaysOnTop();" completionHandler:nil];
-        }
+        toggleAlwaysOnTop((__bridge void*)win);
     }
+    evaluateAppJavaScript(@"if (window.updateBadges) { window.updateBadges(); }");
 }
 - (void)menuToggleMuteAudio:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
-        if (wv) {
-            [wv evaluateJavaScript:@"if (window.toggleMuteAudio) window.toggleMuteAudio();" completionHandler:nil];
-        }
-    }
+    evaluateAppJavaScript(@"if (window.toggleMuteAudio) { window.toggleMuteAudio(); }");
 }
 - (void)menuReloadChat:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        showAppWindow();
+        WKWebView* wv = appWebView();
         if (wv) {
-            [wv evaluateJavaScript:@"window.location.reload();" completionHandler:nil];
+            [wv reload];
+        } else {
+            evaluateAppJavaScript(@"window.location.reload();");
         }
-    }
+    });
 }
 - (void)menuHardRefresh:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        purgeWebKitMemory();
+        showAppWindow();
+        WKWebView* wv = appWebView();
         if (wv) {
-            [wv evaluateJavaScript:@"window.location.href = window.location.origin + window.location.pathname + '?_t=' + Date.now();" completionHandler:nil];
+            [wv reloadFromOrigin];
+        } else {
+            evaluateAppJavaScript(@"window.location.href = window.location.origin + window.location.pathname + '?_t=' + Date.now();");
         }
-    }
+    });
 }
 - (void)menuShowApp:(id)sender {
-    [NSApp activateIgnoringOtherApps:YES];
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        [win makeKeyAndOrderFront:nil];
-    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        showAppWindow();
+    });
 }
 - (void)menuSetThemeDark:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
-        if (wv) [wv evaluateJavaScript:@"if (window.setAppTheme) window.setAppTheme('dark');" completionHandler:nil];
-    }
+    NSWindow* win = appWindow();
+    if (win) setNativeWindowTheme((__bridge void*)win, "dark");
+    evaluateAppJavaScript(@"if (window.setAppTheme) { window.setAppTheme('dark'); }");
 }
 - (void)menuSetThemeLight:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
-        if (wv) [wv evaluateJavaScript:@"if (window.setAppTheme) window.setAppTheme('light');" completionHandler:nil];
-    }
+    NSWindow* win = appWindow();
+    if (win) setNativeWindowTheme((__bridge void*)win, "light");
+    evaluateAppJavaScript(@"if (window.setAppTheme) { window.setAppTheme('light'); }");
 }
 - (void)menuSetThemeSystem:(id)sender {
-    NSWindow* win = [NSApp keyWindow] ?: [NSApp mainWindow];
-    if (win) {
-        WKWebView* wv = findWKWebView([win contentView]);
-        if (wv) [wv evaluateJavaScript:@"if (window.setAppTheme) window.setAppTheme('system');" completionHandler:nil];
-    }
+    NSWindow* win = appWindow();
+    if (win) setNativeWindowTheme((__bridge void*)win, "system");
+    evaluateAppJavaScript(@"if (window.setAppTheme) { window.setAppTheme('system'); }");
 }
 @end
 
@@ -428,7 +536,7 @@ static void setupStatusItem(void) {
         // Submenu: Tema
         NSMenuItem* themeSubmenuItem = [[NSMenuItem alloc] initWithTitle:@"Tema Tampilan" action:nil keyEquivalent:@""];
         NSMenu* themeMenu = [[NSMenu alloc] initWithTitle:@"Tema Tampilan"];
-        
+
         NSMenuItem* mDark = [themeMenu addItemWithTitle:@"🌙 Mode Gelap (Dark)" action:@selector(menuSetThemeDark:) keyEquivalent:@""];
         [mDark setTarget:g_menuBridge];
 
@@ -480,15 +588,16 @@ static void setupMacOSMenuBar(void) {
         // App Menu
         NSMenuItem* appMenuItem = [[NSMenuItem alloc] init];
         NSMenu* appMenu = [[NSMenu alloc] initWithTitle:@"WhatsApp"];
-        [appMenu addItemWithTitle:@"About WhatsApp Desktop" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
-        
-        NSMenuItem* settingsItem = [appMenu addItemWithTitle:@"Settings / Controls..." action:@selector(menuSettings:) keyEquivalent:@","];
+        NSMenuItem* aboutItem = [appMenu addItemWithTitle:@"Tentang WhatsApp Desk" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
+        [aboutItem setTarget:NSApp];
+
+        NSMenuItem* settingsItem = [appMenu addItemWithTitle:@"Pengaturan..." action:@selector(menuSettings:) keyEquivalent:@","];
         [settingsItem setTarget:g_menuBridge];
 
-        NSMenuItem* updateItem = [appMenu addItemWithTitle:@"Check for Updates..." action:@selector(menuCheckUpdates:) keyEquivalent:@""];
+        NSMenuItem* updateItem = [appMenu addItemWithTitle:@"Periksa Pembaruan..." action:@selector(menuCheckUpdates:) keyEquivalent:@""];
         [updateItem setTarget:g_menuBridge];
 
-        NSMenuItem* dlItem = [appMenu addItemWithTitle:@"Open Downloads Folder" action:@selector(menuOpenDownloads:) keyEquivalent:@"D"];
+        NSMenuItem* dlItem = [appMenu addItemWithTitle:@"Buka Folder Unduhan" action:@selector(menuOpenDownloads:) keyEquivalent:@"D"];
         [dlItem setKeyEquivalentModifierMask:(NSEventModifierFlagShift | NSEventModifierFlagCommand)];
         [dlItem setTarget:g_menuBridge];
 
@@ -518,16 +627,16 @@ static void setupMacOSMenuBar(void) {
 
         // Controls Menu
         NSMenuItem* controlsMenuItem = [[NSMenuItem alloc] init];
-        NSMenu* controlsMenu = [[NSMenu alloc] initWithTitle:@"Controls"];
+        NSMenu* controlsMenu = [[NSMenu alloc] initWithTitle:@"Kontrol"];
 
         // Submenu: Theme in Controls menu
-        NSMenuItem* themeSubItem = [[NSMenuItem alloc] initWithTitle:@"Theme / Tema" action:nil keyEquivalent:@""];
+        NSMenuItem* themeSubItem = [[NSMenuItem alloc] initWithTitle:@"Tema" action:nil keyEquivalent:@""];
         NSMenu* subTheme = [[NSMenu alloc] initWithTitle:@"Theme"];
-        NSMenuItem* thDark = [subTheme addItemWithTitle:@"🌙 Mode Gelap (Dark)" action:@selector(menuSetThemeDark:) keyEquivalent:@""];
+        NSMenuItem* thDark = [subTheme addItemWithTitle:@"Gelap" action:@selector(menuSetThemeDark:) keyEquivalent:@""];
         [thDark setTarget:g_menuBridge];
-        NSMenuItem* thLight = [subTheme addItemWithTitle:@"☀️ Mode Terang (Light)" action:@selector(menuSetThemeLight:) keyEquivalent:@""];
+        NSMenuItem* thLight = [subTheme addItemWithTitle:@"Terang" action:@selector(menuSetThemeLight:) keyEquivalent:@""];
         [thLight setTarget:g_menuBridge];
-        NSMenuItem* thSystem = [subTheme addItemWithTitle:@"💻 Ikuti Sistem (Auto)" action:@selector(menuSetThemeSystem:) keyEquivalent:@""];
+        NSMenuItem* thSystem = [subTheme addItemWithTitle:@"Ikuti Sistem" action:@selector(menuSetThemeSystem:) keyEquivalent:@""];
         [thSystem setTarget:g_menuBridge];
         [themeSubItem setSubmenu:subTheme];
         [controlsMenu addItem:themeSubItem];
@@ -594,7 +703,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -757,11 +865,7 @@ func runApp() {
 	}
 	defer w.Destroy()
 
-	// 1. Setup standard macOS menu bar and system status item (taskbar tray icon)
-	C.setupMacOSMenuBar()
-	C.setupStatusItem()
-
-	// 2. Configure window behavior: dark title bar, close-to-hide, and dock click reopen
+	// 1. Configure window behavior: dark title bar, close-to-hide, and dock click reopen
 	C.configureWindowBehavior(w.Window())
 
 	// Apply configured appearance theme (dark / light / system)
@@ -770,10 +874,14 @@ func runApp() {
 	C.setNativeWindowTheme(w.Window(), cTheme)
 	C.free(unsafe.Pointer(cTheme))
 
-	// 3. Set native WebKit customUserAgent to Google Chrome & auto-grant media capture
+	// 2. Set native WebKit customUserAgent to Google Chrome & auto-grant media capture
 	cua := C.CString(userAgent)
 	C.setWKWebViewUserAgentAndMedia(w.Window(), cua)
 	C.free(unsafe.Pointer(cua))
+
+	// 3. Setup standard macOS menu bar and system status item (taskbar tray icon)
+	C.setupMacOSMenuBar()
+	C.setupStatusItem()
 
 	w.SetTitle(windowTitle)
 
@@ -792,19 +900,13 @@ func runApp() {
 		}
 	}()
 
-	// 5b. Periodic Go runtime memory cleanup (every 60s)
-	// WebKit memory is only purged when the window loses focus or minimizes (in windowDidResignKey)
-	go func() {
-		ticker := time.NewTicker(60 * time.Second)
-		defer ticker.Stop()
-		for range ticker.C {
-			debug.FreeOSMemory()
-		}
-	}()
-
 	// 6. Bind native notification bridge
 	_ = w.Bind("sendNativeNotification", func(title, body string) {
 		go showNativeNotification(title, body)
+	})
+
+	_ = w.Bind("releaseMemoryNative", func() {
+		C.triggerNativeMemoryPurge()
 	})
 
 	// 7. Bind external link handler to open links in macOS default browser
@@ -865,6 +967,12 @@ func runApp() {
 
 	_ = w.Bind("openFileNative", func(filePath string) bool {
 		return openFileInDefaultApp(filePath)
+	})
+
+	_ = w.Bind("showPDFPreviewNative", func(filePath string) bool {
+		path := C.CString(filePath)
+		defer C.free(unsafe.Pointer(path))
+		return bool(C.showNativePDFPreview(path))
 	})
 
 	_ = w.Bind("getDownloadDirNative", func() string {

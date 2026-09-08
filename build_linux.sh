@@ -3,7 +3,7 @@ set -e
 
 APP_NAME="whatsapp-desk"
 DISPLAY_NAME="WhatsApp Desk"
-VERSION="1.5.2"
+VERSION="1.5.3"
 OUTPUT_DIR="dist_linux"
 
 echo "=== Building ${DISPLAY_NAME} for Linux ==="

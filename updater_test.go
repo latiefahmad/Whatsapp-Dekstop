@@ -2,6 +2,20 @@ package main
 
 import "testing"
 
+func TestLinuxUpdaterSelectsPortableArchive(t *testing.T) {
+	release := &GitHubRelease{Assets: []GitHubAsset{
+		{Name: "WhatsApp-Desk-Linux-amd64.deb", BrowserDownloadURL: "https://example.test/app.deb"},
+		{Name: "WhatsApp-Desk-Linux-x64.tar.gz", BrowserDownloadURL: "https://example.test/app.tar.gz"},
+	}}
+	asset := findAssetForOS(release, "linux")
+	if asset == nil || asset.Name != "WhatsApp-Desk-Linux-x64.tar.gz" {
+		t.Fatalf("Linux self-update must select tar.gz, got %#v", asset)
+	}
+	if got := updateDownloadExtension(asset.BrowserDownloadURL); got != ".tar.gz" {
+		t.Fatalf("download extension = %q, want .tar.gz", got)
+	}
+}
+
 func TestIsNewerVersion(t *testing.T) {
 	cases := []struct {
 		current string
@@ -14,7 +28,10 @@ func TestIsNewerVersion(t *testing.T) {
 		{"1.4.0", "v1.5.0", true},
 		{"1.5.0", "v1.5.1", true},
 		{"1.5.1", "v1.5.2", true},
+		{"1.5.2", "v1.5.3", true},
+		{"1.5.3", "1.5.3", false},
 		{"1.5.2", "1.5.2", false},
+		{"1.5.2", "1.5.1", false},
 		{"1.5.1", "v1.5.1", false},
 		{"1.5.1", "1.5.0", false},
 		{"1.4.0", "2.0.0", true},

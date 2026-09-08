@@ -211,22 +211,29 @@ func getInitScript(ua string) string {
 		window.dismissStuckViewer = dismissStuckViewer;
 
 		// Track clicked document filenames with robust regex matching
-		var lastClickedDocName = 'dokumen.pdf';
-		document.addEventListener('click', function(e) {
-			var el = e.target;
+		var lastClickedDocName = '';
+		var lastDocumentIntentAt = 0;
+		function extractDocumentName(el) {
 			while (el && el !== document.body) {
-				var title = el.getAttribute('title') || '';
-				if (title.match(/\.(pdf|docx?|xlsx?|pptx?|txt)/i)) {
-					lastClickedDocName = title.trim();
-					break;
-				}
+				var title = el.getAttribute && (el.getAttribute('title') || el.getAttribute('aria-label') || '');
+				var titleMatch = title && title.match(/([^\n\r<>]{1,180}\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf))\b/i);
+				if (titleMatch && titleMatch[1]) return titleMatch[1].trim();
 				var text = el.innerText || '';
-				var match = text.match(/([a-zA-Z0-9_\-\.\s\(\)]+\.(pdf|docx?|xlsx?|pptx?|txt))/i);
-				if (match && match[1]) {
-					lastClickedDocName = match[1].trim();
-					break;
-				}
+				var textMatch = text.match(/([^\n\r<>]{1,180}\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf))\b/i);
+				if (textMatch && textMatch[1]) return textMatch[1].trim();
 				el = el.parentElement;
+			}
+			return '';
+		}
+		function isRecentPDFIntent() {
+			return !!lastClickedDocName && lastClickedDocName.toLowerCase().endsWith('.pdf') &&
+				(Date.now() - lastDocumentIntentAt) < 15000;
+		}
+		document.addEventListener('click', function(e) {
+			var name = extractDocumentName(e.target);
+			if (name) {
+				lastClickedDocName = name;
+				lastDocumentIntentAt = Date.now();
 			}
 		}, true);
 
@@ -251,9 +258,19 @@ func getInitScript(ua string) string {
 		}, true);
 
 		// In-App Document Preview Modal Overlay
-		function showInAppDocModal(filename, blobUrl, savedPath, dataUri) {
+		function showInAppDocModal(filename, blobUrl, savedPath, dataUri, ownedBlobUrl) {
 			var existing = document.getElementById('wa-doc-modal-overlay');
 			if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+			// WKWebView does not provide Safari's built-in PDF renderer. On macOS,
+			// hand the saved file to PDFKit so the preview cannot remain blank.
+			if (filename && filename.toLowerCase().endsWith('.pdf') && savedPath && window.showPDFPreviewNative) {
+				window.showPDFPreviewNative(savedPath);
+				if (ownedBlobUrl) {
+					try { URL.revokeObjectURL(ownedBlobUrl); } catch (e) {}
+				}
+				return;
+			}
 
 			var overlay = document.createElement('div');
 			overlay.id = 'wa-doc-modal-overlay';
@@ -295,7 +312,13 @@ func getInitScript(ua string) string {
 			document.body.appendChild(overlay);
 
 			function closeDocModal() {
+				frameEl.src = 'about:blank';
 				if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+				if (ownedBlobUrl) {
+					try { URL.revokeObjectURL(ownedBlobUrl); } catch (e) {}
+					ownedBlobUrl = '';
+				}
+				dataUri = '';
 			}
 
 			document.getElementById('wa-btn-close-doc').onclick = closeDocModal;
@@ -336,20 +359,23 @@ func getInitScript(ua string) string {
 		URL.createObjectURL = function(blob) {
 			var url = origCreateObjectURL.apply(this, arguments);
 			try {
-				if (blob && (blob.type === 'application/pdf' || (blob.type && blob.type.indexOf('pdf') >= 0))) {
+				if (blob && (blob.type === 'application/pdf' || (blob.type && blob.type.indexOf('pdf') >= 0) ||
+					(blob.type === 'application/octet-stream' && isRecentPDFIntent()))) {
 					var name = lastClickedDocName || 'dokumen.pdf';
 					if (!name.toLowerCase().endsWith('.pdf') && !name.includes('.')) name += '.pdf';
+					var previewBlob = blob.slice(0, blob.size, 'application/pdf');
+					var ownedBlobUrl = origCreateObjectURL(previewBlob);
 					var reader = new FileReader();
 					reader.onloadend = function() {
 						var base64data = reader.result;
 						if (window.saveDownloadedFileNative) {
 							window.saveDownloadedFileNative(name, base64data).then(function(savedPath) {
-								showInAppDocModal(name, url, savedPath, base64data);
+								showInAppDocModal(name, ownedBlobUrl, savedPath, base64data, ownedBlobUrl);
 								dismissStuckViewer();
 								showFloatingToast('📄 Pratinjau dokumen: ' + name);
 							});
 						} else {
-							showInAppDocModal(name, url, '', base64data);
+							showInAppDocModal(name, ownedBlobUrl, '', base64data, ownedBlobUrl);
 							dismissStuckViewer();
 						}
 					};
@@ -365,17 +391,19 @@ func getInitScript(ua string) string {
 			fetch(blobUrl)
 				.then(function(res) { return res.blob(); })
 				.then(function(blob) {
+					var previewBlob = blob.slice(0, blob.size, 'application/pdf');
+					var ownedBlobUrl = origCreateObjectURL(previewBlob);
 					var reader = new FileReader();
 					reader.onloadend = function() {
 						var base64data = reader.result;
 						if (window.saveDownloadedFileNative) {
 							window.saveDownloadedFileNative(name, base64data).then(function(savedPath) {
-								showInAppDocModal(name, blobUrl, savedPath, base64data);
+								showInAppDocModal(name, ownedBlobUrl, savedPath, base64data, ownedBlobUrl);
 								dismissStuckViewer();
 								showFloatingToast('📄 Pratinjau dokumen: ' + name);
 							});
 						} else {
-							showInAppDocModal(name, blobUrl, '', base64data);
+							showInAppDocModal(name, ownedBlobUrl, '', base64data, ownedBlobUrl);
 							dismissStuckViewer();
 						}
 					};
@@ -453,13 +481,17 @@ func getInitScript(ua string) string {
 
 		// Memory Optimization: Idle Garbage Collection
 		(function() {
-			if (typeof window.gc === 'function') {
-				setInterval(function() {
-					if (document.hidden) {
-						window.gc();
-					}
-				}, 60000);
-			}
+			var releaseTimer = null;
+			document.addEventListener('visibilitychange', function() {
+				clearTimeout(releaseTimer);
+				if (!document.hidden) return;
+				lastClickedDocName = '';
+				lastDocumentIntentAt = 0;
+				releaseTimer = setTimeout(function() {
+					if (typeof window.gc === 'function') window.gc();
+					if (window.releaseMemoryNative) window.releaseMemoryNative();
+				}, 1500);
+			});
 		})();
 
 		// Debounced window resize persistence
@@ -486,8 +518,10 @@ func getInitScript(ua string) string {
 				toast = document.createElement('div');
 				toast.id = 'wa-hud-toast';
 				toast.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);background:rgba(32,44,51,0.94);backdrop-filter:blur(10px);color:#00a884;border:1px solid rgba(0,168,132,0.4);border-radius:20px;padding:8px 20px;font-size:12.5px;font-weight:600;z-index:9999999;box-shadow:0 8px 24px rgba(0,0,0,0.6);pointer-events:none;transition:all 0.22s cubic-bezier(0.16,1,0.3,1);opacity:0;';
-				document.body.appendChild(toast);
+				var parent = document.body || document.documentElement;
+				if (parent) parent.appendChild(toast);
 			}
+			if (!toast) return;
 			toast.textContent = msg;
 			toast.style.opacity = '1';
 			toast.style.transform = 'translateX(-50%) translateY(4px)';
@@ -495,7 +529,7 @@ func getInitScript(ua string) string {
 			toast._timer = setTimeout(function() {
 				toast.style.opacity = '0';
 				toast.style.transform = 'translateX(-50%) translateY(0)';
-			}, 2000);
+			}, 2500);
 		}
 
 		// Privacy Mode Toggle (Cmd + Shift + P)
@@ -711,7 +745,8 @@ func getInitScript(ua string) string {
 
 				banner.appendChild(leftWrap);
 				banner.appendChild(rightWrap);
-				document.body.appendChild(banner);
+				var bannerParent = document.body || document.documentElement;
+				if (bannerParent) bannerParent.appendChild(banner);
 
 				try {
 					if (window.sendNativeNotification) {
@@ -766,7 +801,7 @@ func getInitScript(ua string) string {
 						if (res && res.available) {
 							window.showUpdateBanner(res.latest_version, res.release_title, res.download_url);
 						} else {
-							var cur = (res && res.current_version) ? res.current_version : '1.5.2';
+							var cur = (res && res.current_version) ? res.current_version : '1.5.3';
 							showFloatingToast('✅ WhatsApp Desk sudah versi terbaru (v' + cur + ')');
 						}
 						return res;
@@ -835,6 +870,8 @@ func getInitScript(ua string) string {
 						return response.blob();
 					})
 					.then(function(blob) {
+						var previewBlob = isDoc ? blob.slice(0, blob.size, 'application/pdf') : null;
+						var ownedBlobUrl = previewBlob ? origCreateObjectURL(previewBlob) : '';
 						var reader = new FileReader();
 						reader.onloadend = function() {
 							var base64data = reader.result;
@@ -842,16 +879,18 @@ func getInitScript(ua string) string {
 								window.saveDownloadedFileNative(filename, base64data).then(function(savedPath) {
 									if (savedPath) {
 										if (shouldAutoOpen) {
-											showInAppDocModal(filename, href, savedPath, base64data);
+										showInAppDocModal(filename, ownedBlobUrl || href, savedPath, base64data, ownedBlobUrl);
 											if (window.dismissStuckViewer) window.dismissStuckViewer();
 											showFloatingToast('📄 Pratinjau dibuka: ' + filename);
 										} else {
 											showFloatingToast('💾 Berhasil disimpan: ' + filename);
 										}
 									} else {
+										if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
 										showFloatingToast('❌ Gagal menyimpan berkas.');
 									}
 								}).catch(function() {
+									if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
 									showFloatingToast('❌ Error menyimpan berkas.');
 								});
 							}
@@ -861,6 +900,17 @@ func getInitScript(ua string) string {
 					.catch(function(err) {
 						console.error('Download intercept fetch error:', err);
 					});
+			}
+
+			var forwardingDocumentDownload = false;
+			function findDocumentDownloadControl(start) {
+				var selector = 'a[download], button[data-testid*="download"], [role="button"][data-testid*="download"], button[aria-label*="Unduh"], button[aria-label*="Download"], [role="button"][aria-label*="Unduh"], [role="button"][aria-label*="Download"], [data-icon="download"], [data-icon="download-refreshed"]';
+				var node = start;
+				for (var depth = 0; node && node !== document.body && depth < 12; depth++, node = node.parentElement) {
+					var found = node.querySelector && node.querySelector(selector);
+					if (found) return found.closest('button, a, [role="button"]') || found;
+				}
+				return null;
 			}
 
 			// Hook 1: Override HTMLAnchorElement.prototype.click (programmatic downloads)
@@ -897,29 +947,25 @@ func getInitScript(ua string) string {
 
 			// Hook 3: Watch document bubble clicks in chat to handle viewer spinner
 			document.addEventListener('click', function(e) {
+				if (forwardingDocumentDownload) return;
 				var el = e.target;
-				var clickedDoc = false;
-				var foundName = '';
-				while (el && el !== document.body) {
-					var title = el.getAttribute('title') || '';
-					var m1 = title.match(/([a-zA-Z0-9_\-\.\s\(\)]+\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf))/i);
-					if (m1 && m1[1]) {
-						clickedDoc = true;
-						foundName = m1[1].trim();
-						break;
-					}
-					var text = el.innerText || '';
-					var m2 = text.match(/([a-zA-Z0-9_\-\.\s\(\)]+\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf))/i);
-					if (m2 && m2[1]) {
-						clickedDoc = true;
-						foundName = m2[1].trim();
-						break;
-					}
-					el = el.parentElement;
-				}
+				var foundName = extractDocumentName(el);
+				var clickedDoc = !!foundName;
 
 				if (clickedDoc) {
-					if (foundName) lastClickedDocName = foundName;
+					lastClickedDocName = foundName;
+					lastDocumentIntentAt = Date.now();
+					if (foundName.toLowerCase().endsWith('.pdf')) {
+						var directDownload = findDocumentDownloadControl(el);
+						if (directDownload && !directDownload.contains(el)) {
+							e.preventDefault();
+							e.stopImmediatePropagation();
+							forwardingDocumentDownload = true;
+							directDownload.click();
+							forwardingDocumentDownload = false;
+							return;
+						}
+					}
 
 					var checkCount = 0;
 					var checkTimer = setInterval(function() {
@@ -931,7 +977,7 @@ func getInitScript(ua string) string {
 
 						var viewer = document.querySelector('[data-testid="media-viewer"], div[role="dialog"]');
 						if (viewer) {
-							var dlBtn = viewer.querySelector('[data-testid="download"], [data-icon="download"], button[title*="Unduh"], button[title*="Download"], button[aria-label*="Unduh"], button[aria-label*="Download"]');
+							var dlBtn = viewer.querySelector('[data-testid*="download"], [data-icon="download"], [data-icon="download-refreshed"], button[title*="Unduh"], button[title*="Download"], button[aria-label*="Unduh"], button[aria-label*="Download"]');
 							if (dlBtn) {
 								clearInterval(checkTimer);
 								dlBtn.click();
@@ -958,7 +1004,16 @@ func getInitScript(ua string) string {
 					}
 				}
 			});
-			viewerObserver.observe(document.body, { childList: true, subtree: true });
+
+			function initViewerObserver() {
+				var target = document.body || document.documentElement;
+				if (target) {
+					viewerObserver.observe(target, { childList: true, subtree: true });
+				} else {
+					document.addEventListener('DOMContentLoaded', initViewerObserver, { once: true });
+				}
+			}
+			initViewerObserver();
 		})();
 
 		// Theme Manager, In-Flow Header Toolbar Button & Control Center Modal
@@ -1169,24 +1224,23 @@ func getInitScript(ua string) string {
 
 				var overlay = document.createElement('div');
 				overlay.id = 'wa-settings-overlay';
-				overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999999;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;';
+				overlay.style.cssText = 'position:fixed;inset:0;background:rgba(8,15,19,.68);z-index:9999999;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;';
 
 				var modal = document.createElement('div');
 				modal.id = 'wa-settings-container';
-				modal.style.cssText = 'width:540px;max-width:96vw;max-height:90vh;border-radius:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;overflow-y:auto;padding:20px 22px;';
+				modal.style.cssText = 'width:520px;max-width:96vw;max-height:90vh;border-radius:10px;box-sizing:border-box;display:flex;flex-direction:column;gap:0;overflow-y:auto;padding:0 22px 18px;box-shadow:0 18px 48px rgba(0,0,0,.32);';
 
 				// Header
 				var header = document.createElement('div');
 				header.id = 'wa-modal-header';
-				header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;border-bottom-width:1px;border-bottom-style:solid;padding-bottom:12px;';
+				header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;border-bottom-width:1px;border-bottom-style:solid;padding:18px 0 14px;margin-bottom:2px;';
 				header.innerHTML = '' +
 					'<div style="display:flex;align-items:center;gap:10px;">' +
-					'  <div id="wa-modal-icon-wrap" style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;">' +
-					'    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>' +
+					'  <div id="wa-modal-icon-wrap" style="width:10px;height:10px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#00a884;">' +
 					'  </div>' +
 					'  <div>' +
 					'    <h3 id="wa-modal-title" style="margin:0;font-size:15px;font-weight:600;">WhatsApp Desk</h3>' +
-					'    <span id="wa-modal-sub" style="font-size:11px;">Klien Ringan Cepat • Versi 1.5.2</span>' +
+					'    <span id="wa-modal-sub" style="font-size:11px;">Pengaturan aplikasi · versi 1.5.3</span>' +
 					'  </div>' +
 					'</div>' +
 					'<button id="wa-settings-close-x" style="background:transparent;border:none;cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;">✕</button>';
@@ -1195,31 +1249,31 @@ func getInitScript(ua string) string {
 				// Section 0: Theme Switcher Segmented Control
 				var themeBox = document.createElement('div');
 				themeBox.className = 'wa-modal-card';
-				themeBox.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:8px;border-width:1px;border-style:solid;gap:10px;';
+				themeBox.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-radius:0;border-width:0 0 1px;border-style:solid;gap:16px;';
 				themeBox.innerHTML = '' +
 					'<div>' +
-					'  <strong class="wa-text-primary" style="font-size:12.5px;display:block;">Tema Tampilan WhatsApp</strong>' +
-					'  <span class="wa-text-muted" style="font-size:11px;">Pilih mode gelap, terang, atau ikuti sistem</span>' +
+					'  <strong class="wa-text-primary" style="font-size:12.5px;display:block;">Tampilan</strong>' +
+					'  <span class="wa-text-muted" style="font-size:11px;">Tema antarmuka aplikasi</span>' +
 					'</div>' +
 					'<div style="display:flex;align-items:center;gap:4px;">' +
-					'  <button id="wa-theme-btn-dark" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">🌙 Gelap</button>' +
-					'  <button id="wa-theme-btn-light" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">☀️ Terang</button>' +
-					'  <button id="wa-theme-btn-system" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">💻 Auto</button>' +
+					'  <button id="wa-theme-btn-dark" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">Gelap</button>' +
+					'  <button id="wa-theme-btn-light" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">Terang</button>' +
+					'  <button id="wa-theme-btn-system" class="wa-theme-btn" style="padding:5px 10px;border-radius:6px;font-size:11.5px;cursor:pointer;border-width:1px;border-style:solid;font-weight:500;">Sistem</button>' +
 					'</div>';
 				modal.appendChild(themeBox);
 
 				// Section 1: Quick Interactive Controls (2-Column Grid)
 				var quickGrid = document.createElement('div');
-				quickGrid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;';
+				quickGrid.style.cssText = 'display:flex;flex-direction:column;';
 
 				// Card 1: Privacy Mode
 				var cardPrivacy = document.createElement('div');
 				cardPrivacy.className = 'wa-modal-card';
-				cardPrivacy.style.cssText = 'border-radius:8px;border-width:1px;border-style:solid;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;';
+				cardPrivacy.style.cssText = 'border-radius:0;border-width:0 0 1px;border-style:solid;padding:12px 0;display:flex;align-items:center;justify-content:space-between;gap:16px;';
 				cardPrivacy.innerHTML = '' +
 					'<div>' +
 					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
-					'    <strong class="wa-text-primary" style="font-size:12.5px;">🔒 Mode Privasi</strong>' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">Mode privasi</strong>' +
 					'    <span id="wa-badge-priv" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
 					'  <div class="wa-text-muted" style="font-size:11px;">Sensor chat & media saat kursor menjauh.</div>' +
@@ -1233,11 +1287,11 @@ func getInitScript(ua string) string {
 				// Card 2: Always on Top
 				var cardPin = document.createElement('div');
 				cardPin.className = 'wa-modal-card';
-				cardPin.style.cssText = 'border-radius:8px;border-width:1px;border-style:solid;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;';
+				cardPin.style.cssText = 'border-radius:0;border-width:0 0 1px;border-style:solid;padding:12px 0;display:flex;align-items:center;justify-content:space-between;gap:16px;';
 				cardPin.innerHTML = '' +
 					'<div>' +
 					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
-					'    <strong class="wa-text-primary" style="font-size:12.5px;">📌 Pin Jendela</strong>' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">Jendela selalu di depan</strong>' +
 					'    <span id="wa-badge-pin" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
 					'  <div class="wa-text-muted" style="font-size:11px;">Jendela selalu di depan aplikasi lain.</div>' +
@@ -1251,11 +1305,11 @@ func getInitScript(ua string) string {
 				// Card 3: Audio Mute
 				var cardMute = document.createElement('div');
 				cardMute.className = 'wa-modal-card';
-				cardMute.style.cssText = 'border-radius:8px;border-width:1px;border-style:solid;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;';
+				cardMute.style.cssText = 'border-radius:0;border-width:0 0 1px;border-style:solid;padding:12px 0;display:flex;align-items:center;justify-content:space-between;gap:16px;';
 				cardMute.innerHTML = '' +
 					'<div>' +
 					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
-					'    <strong class="wa-text-primary" style="font-size:12.5px;">🔇 Notifikasi Suara</strong>' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">Suara media</strong>' +
 					'    <span id="wa-badge-mute" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
 					'  <div class="wa-text-muted" style="font-size:11px;">Senyapkan seluruh audio notifikasi.</div>' +
@@ -1269,11 +1323,11 @@ func getInitScript(ua string) string {
 				// Card 4: Auto-Start
 				var cardAuto = document.createElement('div');
 				cardAuto.className = 'wa-modal-card';
-				cardAuto.style.cssText = 'border-radius:8px;border-width:1px;border-style:solid;padding:10px 12px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;';
+				cardAuto.style.cssText = 'border-radius:0;border-width:0 0 1px;border-style:solid;padding:12px 0;display:flex;align-items:center;justify-content:space-between;gap:16px;';
 				cardAuto.innerHTML = '' +
 					'<div>' +
 					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
-					'    <strong class="wa-text-primary" style="font-size:12.5px;">🚀 Buka saat Boot</strong>' +
+					'    <strong class="wa-text-primary" style="font-size:12.5px;">Buka saat masuk sistem</strong>' +
 					'    <span id="wa-badge-auto" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
 					'  </div>' +
 					'  <div class="wa-text-muted" style="font-size:11px;">Mulai WhatsApp otomatis saat komputer nyala.</div>' +
@@ -1289,11 +1343,11 @@ func getInitScript(ua string) string {
 				// Section 2: Download Folder Settings
 				var folderSection = document.createElement('div');
 				folderSection.className = 'wa-modal-card';
-				folderSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;border-radius:8px;border-width:1px;border-style:solid;padding:12px;';
+				folderSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;border-radius:0;border-width:0 0 1px;border-style:solid;padding:14px 0;';
 				folderSection.innerHTML = '' +
 					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
-					'  <strong class="wa-text-primary" style="font-size:12.5px;">📁 Folder Simpan Unduhan Chat</strong>' +
-					'  <button id="wa-btn-reset-folder" style="background:transparent;border:none;color:#00a884;font-size:11px;cursor:pointer;padding:2px 4px;">Reset Default</button>' +
+					'  <strong class="wa-text-primary" style="font-size:12.5px;">Folder unduhan</strong>' +
+					'  <button id="wa-btn-reset-folder" style="background:transparent;border:none;color:#00a884;font-size:11px;cursor:pointer;padding:2px 4px;">Gunakan bawaan</button>' +
 					'</div>' +
 					'<div class="wa-text-muted" style="font-size:11px;">Berkas & media yang diunduh dari chat otomatis tersimpan permanen di sini:</div>' +
 					'<div id="wa-folder-box" style="display:flex;align-items:center;border-width:1px;border-style:solid;border-radius:6px;padding:6px 8px;min-width:0;">' +
@@ -1308,14 +1362,14 @@ func getInitScript(ua string) string {
 				// Section 3: Maintenance & Update Actions
 				var actionsSection = document.createElement('div');
 				actionsSection.className = 'wa-modal-card';
-				actionsSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;border-radius:8px;border-width:1px;border-style:solid;padding:10px 12px;';
+				actionsSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;border-radius:0;border-width:0 0 1px;border-style:solid;padding:14px 0;';
 				actionsSection.innerHTML = '' +
-					'<strong class="wa-text-muted" style="font-size:11.5px;">Tindakan Cepat & Pemeliharaan:</strong>' +
+					'<strong class="wa-text-primary" style="font-size:12.5px;">Pemeliharaan</strong>' +
 					'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">' +
-					'  <button id="wa-btn-check-updates-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">🔍 Periksa Update</button>' +
-					'  <button id="wa-btn-reload-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">🔄 Muat Ulang Chat</button>' +
-					'  <button id="wa-btn-hardref-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">⚡ Bersihkan Cache</button>' +
-					'  <button id="wa-btn-onboard-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">📘 Panduan Singkat</button>' +
+					'  <button id="wa-btn-check-updates-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Periksa pembaruan</button>' +
+					'  <button id="wa-btn-reload-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Muat ulang chat</button>' +
+					'  <button id="wa-btn-hardref-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Bersihkan cache</button>' +
+					'  <button id="wa-btn-onboard-modal" class="wa-card-btn" style="padding:6px 8px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;text-align:center;">Lihat panduan</button>' +
 					'</div>';
 				modal.appendChild(actionsSection);
 
@@ -1323,7 +1377,7 @@ func getInitScript(ua string) string {
 				var disclaimer = document.createElement('div');
 				disclaimer.className = 'wa-text-muted';
 				disclaimer.style.cssText = 'font-size:10px;line-height:1.4;border-top-width:1px;border-top-style:solid;padding-top:8px;margin-top:2px;';
-				disclaimer.innerHTML = 'ℹ️ <strong>WhatsApp Desk</strong> adalah aplikasi independen berbasis Go & WebKit. Ringan, cepat & hemat memori. Bukan aplikasi resmi Meta Platforms, Inc.';
+				disclaimer.innerHTML = '<strong>WhatsApp Desk</strong> adalah aplikasi independen dan tidak berafiliasi dengan Meta.';
 				modal.appendChild(disclaimer);
 
 				// Footer
@@ -1339,6 +1393,8 @@ func getInitScript(ua string) string {
 
 				overlay.appendChild(modal);
 				document.body.appendChild(overlay);
+				modal.addEventListener('pointerdown', function(e) { e.stopPropagation(); });
+				modal.addEventListener('click', function(e) { e.stopPropagation(); });
 
 				function closeSettings() {
 					window.removeEventListener('keydown', onKeyClose);
@@ -1358,7 +1414,7 @@ func getInitScript(ua string) string {
 				// Styling Synchronizer for Modal (Dark / Light Theme)
 				window.syncModalTheme = function(isThemeDark) {
 					var bg = isThemeDark ? '#111b21' : '#ffffff';
-					var cardBg = isThemeDark ? '#202c33' : '#f0f2f5';
+					var cardBg = bg;
 					var border = isThemeDark ? '#2a3942' : '#d1d7db';
 					var textPri = isThemeDark ? '#e9edef' : '#111b21';
 					var textMut = isThemeDark ? '#8696a0' : '#667781';
@@ -1369,7 +1425,7 @@ func getInitScript(ua string) string {
 					header.style.borderBottomColor = border;
 					document.getElementById('wa-modal-title').style.color = textPri;
 					document.getElementById('wa-modal-sub').style.color = textMut;
-					document.getElementById('wa-modal-icon-wrap').style.background = isThemeDark ? 'rgba(0,168,132,0.15)' : 'rgba(0,128,105,0.12)';
+					document.getElementById('wa-modal-icon-wrap').style.background = accent;
 					document.getElementById('wa-modal-icon-wrap').style.color = accent;
 					document.getElementById('wa-settings-close-x').style.color = textMut;
 

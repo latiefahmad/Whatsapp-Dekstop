@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-08T00:00:00+07:00",
+  "title": "Design System: WhatsApp Desk",
+  "extensions": {
+    "colorMeta": {
+      "accent": { "role": "primary", "displayName": "Action Green", "canonical": "#008069", "tonalRamp": ["#063D35", "#075247", "#076957", "#008069", "#22977F", "#59AD99", "#9ACBC0", "#DBEBE7"] }
+    },
+    "motion": [
+      { "name": "state", "value": "160ms cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Short state transitions only." }
+    ]
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "Quiet Desktop Utility",
+    "overview": "Kontrol tambahan terasa native dan menghilang dari perhatian saat tidak digunakan.",
+    "keyCharacteristics": ["Restrained", "Compact", "Familiar", "Accessible"],
+    "rules": [
+      { "name": "One Accent", "body": "Hijau hanya untuk tindakan utama, fokus, dan status aktif.", "section": "colors" },
+      { "name": "Flat By Default", "body": "Kontrol dan baris pengaturan tidak memakai glow atau glass effect.", "section": "elevation" }
+    ],
+    "dos": ["Do pertahankan ID kontrol dan pola shortcut yang sudah dikenal."],
+    "donts": ["Don't gunakan gradient dekoratif, glassmorphism, glow, kumpulan kartu identik, emoji dekoratif, copy berlebihan, atau animasi yang tidak menjelaskan perubahan keadaan."]
+  }
+}
