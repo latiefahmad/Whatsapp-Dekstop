@@ -13,9 +13,9 @@ package main
 static void configureWebKitMemoryLimits(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        // Strictly cap in-memory URL cache to 32MB and disk cache to 128MB (default was unbounded/hundreds of MBs)
-        NSURLCache *sharedCache = [[NSURLCache alloc] initWithMemoryCapacity:32 * 1024 * 1024
-                                                                diskCapacity:128 * 1024 * 1024
+        // Strictly cap in-memory URL cache to 2MB (default was unbounded/hundreds of MBs) and disk cache to 32MB
+        NSURLCache *sharedCache = [[NSURLCache alloc] initWithMemoryCapacity:2 * 1024 * 1024
+                                                                diskCapacity:32 * 1024 * 1024
                                                                     diskPath:nil];
         [NSURLCache setSharedURLCache:sharedCache];
     });
@@ -93,10 +93,10 @@ static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) 
             NSString* ua = [NSString stringWithUTF8String:uaStr];
             [wv setCustomUserAgent:ua];
 
-            // Enable GPU-accelerated drawing & asynchronous layer rendering
+            // Enable Core Animation Layer but disable asynchronous double-buffering to save 100MB+ RAM
             [wv setWantsLayer:YES];
             if (wv.layer) {
-                [wv.layer setDrawsAsynchronously:YES];
+                [wv.layer setOpaque:YES];
             }
 
             // Memory and Performance Optimizations
@@ -113,6 +113,9 @@ static void setWKWebViewUserAgentAndMedia(void* nsWindowPtr, const char* uaStr) 
                 // Disable pageCache & backForwardCache to prevent WebKit from retaining old page trees
                 [prefs setValue:@NO forKey:@"backForwardCacheEnabled"];
                 [prefs setValue:@NO forKey:@"pageCacheEnabled"];
+                
+                // Aggressively restrict background offline caches
+                [prefs setValue:@NO forKey:@"offlineWebApplicationCacheEnabled"];
             } @catch (NSException *exception) {}
 
             g_uiDelegate = [[WhatsAppUIDelegate alloc] init];

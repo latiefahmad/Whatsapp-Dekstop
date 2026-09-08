@@ -161,12 +161,17 @@ func initWindowsProcessProtection() {
 		"--disable-features=Translate,OptimizationHints,MediaRouter,CalculateNativeWinOcclusion,BackForwardCache,InterestFeedContentSuggestions",
 		"--disk-cache-size=33554432",                                  // Cap disk cache to 32MB
 		"--media-cache-size=16777216",                                 // Cap media cache to 16MB
-		"--js-flags=\"--max-old-space-size=256 --optimize_for_size\"", // Cap V8 JS heap to 256MB
+		"--js-flags=\"--max-old-space-size=256 --optimize_for_size --expose-gc\"", // Cap V8 JS heap to 256MB & expose GC
 		"--disable-gpu-shader-disk-cache",
 		"--disable-background-networking",
 		"--disable-component-update",
 		"--disable-domain-reliability",
 		"--disable-sync",
+		"--renderer-process-limit=1",
+		"--disable-site-isolation-trials",
+		"--enable-low-end-device-mode",
+		"--disable-extensions",
+		"--disable-speech-api",
 	}
 	_ = os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", strings.Join(browserArgs, " "))
 
