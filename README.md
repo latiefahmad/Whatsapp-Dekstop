@@ -1,6 +1,6 @@
 # WhatsApp Desk
 
-Aplikasi desktop WhatsApp Web yang ultra-ringan, cepat, dan hemat memori untuk **macOS**, **Windows**, dan **Linux**, dibangun menggunakan bahasa pemrograman Go.
+Aplikasi Desktop WhatsApp yang ultra-ringan, cepat, dan hemat memori untuk **macOS**, **Windows**, dan **Linux**, dibangun menggunakan bahasa pemrograman Go.
 
 Aplikasi ini memanfaatkan webview engine bawaan sistem operasi (Apple WebKit di macOS, Microsoft Edge WebView2 di Windows, dan WebKitGTK di Linux). Tanpa beban runtime Electron yang berat, aplikasi ini menghemat gigabyte penyimpanan dan ratusan megabyte RAM.
 
