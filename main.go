@@ -164,6 +164,72 @@ func getInitScript(ua string) string {
 			} catch (e) {}
 		})();
 
+		// Robust HTML5 Media Autoplay & Inline Playback Support for Status/Stories and Videos
+		(function() {
+			if (!window.HTMLMediaElement) return;
+
+			function prepareMedia(el) {
+				if (!el || el.__wa_media_ready) return;
+				el.__wa_media_ready = true;
+				if (el.tagName === 'VIDEO') {
+					el.setAttribute('playsinline', '');
+					el.setAttribute('webkit-playsinline', '');
+					el.setAttribute('x5-playsinline', '');
+				}
+				if (!el.getAttribute('preload')) {
+					el.setAttribute('preload', 'auto');
+				}
+			}
+
+			var origPlay = HTMLMediaElement.prototype.play;
+			HTMLMediaElement.prototype.play = function() {
+				var self = this;
+				prepareMedia(self);
+				var res = origPlay.apply(this, arguments);
+				if (res && typeof res.catch === 'function') {
+					return res.catch(function(err) {
+						// When WebKit blocks unmuted autoplay, mute the media and retry playback
+						if (err && (err.name === 'NotAllowedError' || err.name === 'AbortError')) {
+							self.muted = true;
+							return origPlay.apply(self);
+						}
+						return Promise.reject(err);
+					});
+				}
+				return res;
+			};
+
+			// Automatically prepare all video/audio elements injected into DOM
+			if (window.MutationObserver) {
+				var mediaObserver = new MutationObserver(function(mutations) {
+					for (var m = 0; m < mutations.length; m++) {
+						var added = mutations[m].addedNodes;
+						for (var n = 0; n < added.length; n++) {
+							var node = added[n];
+							if (node.nodeType === 1) {
+								if (node.tagName === 'VIDEO' || node.tagName === 'AUDIO') {
+									prepareMedia(node);
+								} else if (node.querySelectorAll) {
+									var list = node.querySelectorAll('video, audio');
+									for (var l = 0; l < list.length; l++) {
+										prepareMedia(list[l]);
+									}
+								}
+							}
+						}
+					}
+				});
+				var targetNode = document.documentElement || document.body;
+				if (targetNode) {
+					mediaObserver.observe(targetNode, { childList: true, subtree: true });
+				} else {
+					document.addEventListener('DOMContentLoaded', function() {
+						mediaObserver.observe(document.body, { childList: true, subtree: true });
+					});
+				}
+			}
+		})();
+
 		function isDocumentFileName(name) {
 			if (!name) return false;
 			var ext = name.toLowerCase();
@@ -971,6 +1037,13 @@ func getInitScript(ua string) string {
 		};
 		window.hardRefreshWhatsApp = function() {
 			showFloatingToast('⚡ Hard refresh (clearing cache)...');
+			try {
+				if (window.caches && caches.keys) {
+					caches.keys().then(function(names) {
+						names.forEach(function(name) { caches.delete(name); });
+					});
+				}
+			} catch (e) {}
 			setTimeout(function() {
 				window.location.href = window.location.origin + window.location.pathname + '?_t=' + Date.now();
 			}, 200);
@@ -1201,8 +1274,14 @@ func getInitScript(ua string) string {
 			respStyle.textContent = '' +
 				'html, body, #app { width: 100% !important; height: 100% !important; min-width: 0 !important; overflow: hidden !important; -webkit-font-smoothing: antialiased; }' +
 				'#app > div, #app .two { width: 100% !important; height: 100% !important; min-width: 0 !important; max-width: 100% !important; top: 0 !important; margin: 0 !important; border-radius: 0 !important; }' +
-				'#pane-side, div[data-testid="chat-list"] { min-width: 200px !important; -webkit-overflow-scrolling: touch !important; }' +
-				'#main { min-width: 240px !important; -webkit-overflow-scrolling: touch !important; }';
+				'[data-testid="status-v3"] { min-width: 0 !important; width: 100% !important; height: 100% !important; }' +
+				'@media screen and (min-width: 641px) {' +
+				'  #pane-side, div[data-testid="chat-list"] { min-width: 200px !important; -webkit-overflow-scrolling: touch !important; }' +
+				'  #main { min-width: 240px !important; -webkit-overflow-scrolling: touch !important; }' +
+				'}' +
+				'@media screen and (max-width: 640px) {' +
+				'  #pane-side, div[data-testid="chat-list"], #main { min-width: 0 !important; }' +
+				'}';
 
 			var respTimer = null;
 			function injectResponsive() {
