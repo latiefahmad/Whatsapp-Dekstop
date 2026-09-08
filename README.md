@@ -1,151 +1,151 @@
 # WhatsApp Desk
 
-[![Release](https://img.shields.io/github/v/release/vianziro/Whatsapp-Dekstop?label=Versi%20Terbaru&color=00a884)](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest)
+[![Release](https://img.shields.io/github/v/release/vianziro/Whatsapp-Dekstop?label=Latest%20Release&color=00a884)](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)](https://github.com/vianziro/Whatsapp-Dekstop/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Aplikasi Desktop WhatsApp yang ultra-ringan, cepat, dan hemat memori untuk **macOS**, **Windows**, dan **Linux**, dibangun menggunakan bahasa pemrograman Go.
+An ultra-lightweight, blazing-fast, and memory-efficient WhatsApp Desktop client for **macOS**, **Windows**, and **Linux**, built with Go.
 
-Aplikasi ini memanfaatkan webview engine bawaan sistem operasi (Apple WebKit di macOS, Microsoft Edge WebView2 di Windows, dan WebKitGTK di Linux). Tanpa beban runtime Electron yang berat, aplikasi ini menghemat gigabyte penyimpanan dan ratusan megabyte RAM.
+Unlike official WhatsApp Desktop which bundles a heavy Electron runtime, WhatsApp Desk leverages native OS webview engines (Apple WebKit on macOS, Microsoft Edge WebView2 on Windows, and WebKitGTK on Linux). This saves gigabytes of disk space and hundreds of megabytes of RAM.
 
 ---
 
-## 📥 Unduh / Download (Versi v1.5.3)
+## 📥 Download (Release v1.5.3)
 
-Installer dan biner siap pakai dapat diunduh langsung lewat tautan rilis resmi di bawah ini:
+Ready-to-use binaries and installers are available directly from the official release links below:
 
-| Sistem Operasi | Berkas Installer / Biner | Tipe Arsitektur | Format | Ukuran |
+| Operating System | Installer / Binary | Architecture | Format | Size |
 | :--- | :--- | :--- | :--- | :--- |
-| **macOS (DMG)** | [📥 **Download WhatsApp-Desk-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg) | Universal (Apple Silicon M-Series & Intel) | Apple Disk Image (.dmg) | ~3.7 MB |
-| **macOS (ZIP)** | [📥 **Download WhatsApp-Desk-macOS-Universal.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.zip) | Universal (Apple Silicon M-Series & Intel) | Portable App (.zip) | ~2.9 MB |
-| **Windows (ZIP)** | [📥 **Download WhatsApp-Desk-Windows-x64.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64.zip) | 64-bit (x64) | Paket Lengkap Portabel (.zip) | ~6.9 MB |
+| **macOS (DMG)** | [📥 **Download WhatsApp-Desk-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg) | Universal (Apple Silicon & Intel) | Apple Disk Image (.dmg) | ~3.7 MB |
+| **macOS (ZIP)** | [📥 **Download WhatsApp-Desk-macOS-Universal.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.zip) | Universal (Apple Silicon & Intel) | Portable App (.zip) | ~2.9 MB |
+| **Windows (ZIP)** | [📥 **Download WhatsApp-Desk-Windows-x64.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64.zip) | 64-bit (x64) | Complete Portable Bundle (.zip) | ~6.9 MB |
 | **Windows (EXE)** | [📥 **Download WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe) | 64-bit (x64) | Standalone Executable (.exe) | ~8.5 MB |
 | **Linux (DEB)** | [📥 **Download WhatsApp-Desk-Linux-amd64.deb**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-amd64.deb) | 64-bit (x86_64) | Debian / Ubuntu Package (.deb) | ~3 MB |
 | **Linux (Tarball)** | [📥 **Download WhatsApp-Desk-Linux-x64.tar.gz**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-x64.tar.gz) | 64-bit (x86_64) | Portable Tarball (.tar.gz) | ~3 MB |
 
-> Seluruh versi rilis sebelumnya, arsip biner, dan catatan pembaruan lengkap dapat dilihat di halaman [GitHub Releases](https://github.com/vianziro/Whatsapp-Dekstop/releases).
+> Full release history, release notes, and older binary archives are accessible on the [GitHub Releases](https://github.com/vianziro/Whatsapp-Dekstop/releases) page.
 
 ---
 
-## 🚀 Perbandingan Kebutuhan Sumber Daya
+## 🚀 Resource Utilization Comparison
 
-| Parameter | WhatsApp Desk | WhatsApp Resmi (Electron) |
+| Metric | WhatsApp Desk | Official WhatsApp (Electron) |
 | :--- | :--- | :--- |
-| **Ukuran Berkas** | **~2.5 MB (macOS) / ~5 MB (Win)** | 470 MB – 900 MB+ |
-| **Konsumsi RAM Fisik (RSS)** | **~35 MB (Core) / ~250–350 MB (Chat Aktif)** | 800 MB – 1.5 GB+ |
-| **Engine Render** | Native OS (WebKit / WebView2 / WebKitGTK) | Bundled Chromium + Node.js |
-| **Waktu Muat (Cold Start)** | **< 0.5 detik (Instan)** | 3 – 6 detik |
-| **Beban CPU & Baterai** | Sangat Rendah (Hardware Accelerated) | Cenderung lebih boros daya |
-| **Sesi Login** | Tersimpan di profil lokal terisolasi | Tersimpan di profil lokal |
-| **Enkripsi Chat** | End-to-End resmi WhatsApp (Signal Protocol) | End-to-End resmi WhatsApp (Signal Protocol) |
+| **Binary / App Size** | **~2.5 MB (macOS) / ~7 MB (Win)** | 470 MB – 900 MB+ |
+| **Physical RAM Usage (RSS)** | **~35 MB (Core) / ~80–120 MB (Active Chat)** | 600 MB – 1.5 GB+ |
+| **Rendering Engine** | Native OS (WebKit / WebView2 / WebKitGTK) | Bundled Chromium + Node.js |
+| **Cold Startup Time** | **< 0.5s (Instant)** | 3 – 6 seconds |
+| **CPU & Battery Drain** | Extremely Low (Hardware Accelerated) | High resource consumption |
+| **Login Session** | Securely saved in isolated local profile | Saved in local profile |
+| **Chat Encryption** | Official WhatsApp End-to-End (Signal Protocol) | Official WhatsApp End-to-End (Signal Protocol) |
 
 ---
 
-## Fitur
+## ✨ Features
 
-### Fitur Lintas Platform (Windows, macOS & Linux)
-- **Sesi Login Persisten**: Data sesi (cookies, local storage, indexedDB) tersimpan di direktori profil khusus, sehingga tidak perlu melakukan scan QR code berulang kali setiap membuka aplikasi.
-- **📄 Pratinjau Dokumen & PDF (In-App Preview)**: Membuka berkas PDF dan dokumen langsung di modal pratinjau elegan bertema gelap tanpa terhalang loading spinner WhatsApp yang macet, lengkap dengan tombol instan untuk membuka di PDF Viewer sistem (Apple Preview / Adobe) dan tombol unduh.
-- **🎛️ Control Center Toolbar Cepat**: Tombol toolbar modern di samping bilah pencarian chat untuk mengaktifkan Mode Privasi, Always on Top, Mute Suara, dan membuka Pengaturan hanya dengan sekali klik tanpa perlu menghafal pintasan keyboard.
-- **🎨 Sinkronisasi Tema Dinamis**: Pilihan tema Otomatis (mengikuti OS), Mode Gelap (*Dark*), dan Mode Terang (*Light*) yang tersinkronisasi langsung ke tampilan WhatsApp Web.
-- **Mode Privasi (Anti-Intip)**: Tekan `Ctrl + Shift + P` (Windows) atau `Cmd + Shift + P` (macOS) untuk menyamarkan (*blur*) pesan, gambar, dan nama kontak. Arahkan kursor mouse ke pesan untuk membacanya sementara.
-- **Always on Top (Pin Window)**: Tekan `Ctrl + Shift + T` / `Cmd + Shift + T` untuk menyematkan jendela WhatsApp agar selalu berada di barisan terdepan layar saat multitasking.
-- **Mute Audio Cepat**: Tekan `Ctrl + Shift + M` / `Cmd + Shift + M` untuk mematikan atau membunyikan kembali audio notifikasi seketika.
-- **Auto-Start saat Booting**: Tekan `Ctrl + Shift + S` / `Cmd + Shift + S` untuk mengatur agar aplikasi otomatis terbuka saat sistem operasi dinyalakan.
-- **Reload & Hard Refresh**: Tekan `F5` / `Ctrl/Cmd + R` untuk memuat ulang obrolan, atau `Ctrl/Cmd + Shift + R` untuk hard refresh dan membersihkan cache antarmuka.
-- **In-App Auto-Updater**: Memeriksa rilis terbaru GitHub secara otomatis di latar belakang dan menyediakan pintasan manual `Ctrl/Cmd + Shift + U`. Pengguna dapat memperbarui aplikasi langsung dari jendela obrolan hanya dengan satu klik tanpa perlu mengunduh ulang file installer.
-- **Penyimpanan Unduhan Permanen & Kustom**: Berkas chat, dokumen, dan gambar disimpan secara permanen di luar aplikasi (default di folder `Downloads/WhatsApp Downloads`). Lokasi dapat diatur bebas lewat jendela Pengaturan (`Ctrl/Cmd + ,`) dengan dialog folder native dan pencegahan penimpaan file duplikat.
-- **Floating HUD Feedback**: Setiap pergantian mode pintasan menampilkan indikator notifikasi minimalis langsung di dalam antarmuka.
-- **Dukungan Media Penuh**: Mendukung perekaman voice note, pemutaran audio/video, serta akses mikrofon dan kamera untuk panggilan suara maupun video.
-- **Pencegatan Link Eksternal**: Tautan situs web di dalam chat otomatis dibuka di browser default sistem (Chrome, Edge, Safari, dll.) tanpa mengganggu jendela WhatsApp.
-- **Kontrol Zoom Tampilan**: Sesuaikan ukuran teks dan antarmuka dengan shortcut `Ctrl/Cmd +`, `Ctrl/Cmd -`, dan `Ctrl/Cmd 0`.
-- **Proteksi Single-Instance**: Mencegah terbukanya dua jendela aplikasi yang sama secara bersamaan.
+### Cross-Platform Features (Windows, macOS & Linux)
+- **Persistent Login Session**: Session state (cookies, local storage, indexedDB) is preserved in a dedicated, isolated profile directory. No need to re-scan QR codes each time you launch the app.
+- **📄 Multi-Format In-App Document Preview**: Instant, dark-themed preview modal for **PDF**, **Excel** (`.xlsx`, `.xls`, `.csv`), **Word** (`.docx`, `.doc`), and **Plain Text** (`.txt`) documents directly inside the app. Includes quick actions to open files in default system applications (Apple Preview, Numbers, Excel, Pages, Word) or save them locally.
+- **🛠️ Media Viewer & Quick Dismiss**: Enhanced WhatsApp Web media viewer interaction with immediate exit on ✕ (Close) button clicks or the `Escape` key, completely avoiding stuck loading spinners or hijacked event loops.
+- **🎛️ Quick Control Center Toolbar**: Modern in-flow toolbar button next to the chat search bar to toggle Privacy Mode, Always on Top, Audio Mute, and open Settings with a single click—no need to memorize keyboard shortcuts.
+- **🎨 Dynamic Theme Synchronization**: Supports Auto (system-matching), Dark, and Light themes seamlessly synchronized with WhatsApp Web.
+- **🔒 Privacy Mode (Anti-Peeking)**: Press `Ctrl + Shift + P` (Windows/Linux) or `Cmd + Shift + P` (macOS) to blur messages, media, and contact names. Simply hover over any message to temporarily read it.
+- **📌 Always on Top (Window Pinning)**: Press `Ctrl + Shift + T` / `Cmd + Shift + T` to keep WhatsApp pinned above all other windows during multitasking.
+- **🔇 Instant Audio Mute**: Press `Ctrl + Shift + M` / `Cmd + Shift + M` to quickly mute or unmute chat notification sounds.
+- **🚀 Auto-Start on System Boot**: Press `Ctrl + Shift + S` / `Cmd + Shift + S` to configure the app to launch automatically when your computer boots up.
+- **🔄 Chat Reload & Hard Refresh**: Press `F5` / `Ctrl/Cmd + R` to reload chat view, or `Ctrl/Cmd + Shift + R` to hard refresh and purge interface caches.
+- **⚡ In-App Auto-Updater**: Automatically checks for new GitHub Releases in the background with manual shortcut `Ctrl/Cmd + Shift + U`. Update the application directly from the chat window with one click without manually downloading installers.
+- **💾 Permanent & Custom Downloads Directory**: Chat documents, files, and images are saved permanently to disk (defaults to `Downloads/WhatsApp Downloads`). The path can be customized via the Settings window (`Ctrl/Cmd + ,`) with a native folder dialog and duplicate filename auto-incrementing.
+- **🔔 Minimalist Floating HUD Feedback**: Every shortcut action displays a clean, unobtrusive toast indicator inside the interface.
+- **🎙️ Full Media & Call Support**: Complete support for voice notes recording, audio/video playback, and microphone/camera hardware access for voice and video calling.
+- **🌐 External Link Interception**: Web links clicked inside chat open automatically in your default system browser (Chrome, Safari, Edge, Firefox, etc.) without disrupting the WhatsApp window.
+- **🔍 Display Zoom Control**: Easily adjust text and interface scaling with `Ctrl/Cmd +`, `Ctrl/Cmd -`, and `Ctrl/Cmd 0`.
+- **🛡️ Single-Instance Guard**: Prevents accidental multiple instances of the app from running concurrently.
 
-### Integrasi Sistem Windows
-- **Kompatibilitas Penuh Windows 10 & Windows 11 (v1.5.3 Fix)**: Perlindungan proses Chromium berbasis Job Object dengan izin *Silent Breakaway*, menjamin jendela aplikasi terbuka cepat tanpa blank hitam.
-- **Microsoft Edge WebView2**: Menggunakan runtime WebView2 bawaan Windows untuk rendering kilat dan konsumsi memori yang sangat hemat.
-- **Fokus Notifikasi Windows Toast**: Mengklik notifikasi Windows Toast otomatis membawa jendela WhatsApp langsung ke depan layar.
-- **Dark Mode Title Bar**: Frame jendela gelap yang menyatu rapi dengan tema antarmuka WhatsApp menggunakan integrasi Win32 Desktop Window Manager (DWM).
-- **Penyimpanan Profil**: Data sesi disimpan rapi di folder `%APPDATA%\WhatsAppDesk\UserData`.
-- **Portabel**: Tersedia dalam format file tunggal mandiri (`WhatsApp.exe`) maupun paket arsip zip (`WhatsApp-Desk-Windows-x64.zip`).
+### Windows System Integration
+- **Windows 10 & 11 Full Compatibility (v1.5.3 Fix)**: Chromium process protection utilizing Windows Job Object with *Silent Breakaway* permission (`JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK`), ensuring clean, instant startup without black screens across all Windows 10 and 11 devices.
+- **Microsoft Edge WebView2**: Powered by the Evergreen WebView2 runtime for native DirectX hardware acceleration and minimal RAM consumption.
+- **Windows Toast Notification Focus**: Clicking a native Windows toast notification instantly brings the WhatsApp window to the foreground.
+- **Dark Mode Title Bar**: Seamless Win32 Desktop Window Manager (DWM) integration providing a native dark window frame matching WhatsApp Web.
+- **Isolated User Data Profile**: Session data is stored in `%APPDATA%\WhatsAppDesk\UserData\`.
+- **Fully Portable**: Available as a standalone executable (`WhatsApp.exe`) and portable zip archive (`WhatsApp-Desk-Windows-x64.zip`).
 
-### Integrasi Sistem macOS
-- **Apple WebKit (Cocoa) & PDFKit**: Menggunakan WKWebView native dan integrasi Cocoa PDFKit untuk pratinjau dokumen berkecepatan tinggi.
-- **Universal Binary**: Satu berkas aplikasi langsung mendukung arsitektur Apple Silicon (M1/M2/M3/M4) dan Intel (x86_64).
-- **Badge Unread di Dock**: Menampilkan jumlah pesan yang belum dibaca langsung pada icon aplikasi di Dock macOS.
-- **Perilaku Close-to-Hide**: Menutup jendela dengan `Cmd + W` atau tombol silang merah hanya menyembunyikan jendela ke latar belakang; notifikasi tetap aktif dan jendela dapat dibuka kembali secara instan lewat Dock. Keluar penuh dilakukan dengan `Cmd + Q`.
-- **Menu Bar Cocoa Lengkap**: Mendukung shortcut standar macOS seperti `Cmd + C` (Copy), `Cmd + V` (Paste), `Cmd + X` (Cut), `Cmd + A` (Select All), dan `Cmd + Z` (Undo).
-- **Memori Ukuran Jendela**: Posisi dan ukuran jendela terakhir disimpan dan dipulihkan otomatis saat dibuka kembali.
-
----
-
-## 📖 Panduan Instalasi & Cara Mengatasi Peringatan Keamanan
-
-Karena aplikasi ini didistribusikan secara independen dan open-source (tanpa sertifikat berbayar Apple Developer ID $99/tahun atau Microsoft EV Code Signing yang mahal), sistem operasi mungkin menampilkan peringatan keamanan saat pertama kali dibuka. 
-
-Berikut panduan instalasi dan solusi mudahnya di masing-masing sistem operasi:
+### macOS System Integration
+- **Apple WebKit (Cocoa) & PDFKit**: Native WKWebView with Cocoa PDFKit integration for high-speed document rendering.
+- **Universal Binary**: A single universal binary natively supporting both Apple Silicon (M1/M2/M3/M4) and Intel (x86_64) Macs.
+- **Dock Unread Badge**: Displays live unread message counts directly on the application Dock icon.
+- **Close-to-Hide Window Behavior**: Closing the window with `Cmd + W` or the red title bar button hides the window to the background; background notifications stay active, and the window pops up instantly upon clicking the Dock icon. Full exit is performed via `Cmd + Q`.
+- **Complete Cocoa Menu Bar**: Standard macOS shortcuts such as `Cmd + C` (Copy), `Cmd + V` (Paste), `Cmd + X` (Cut), `Cmd + A` (Select All), and `Cmd + Z` (Undo).
+- **Persistent Window Frame Memory**: Remembers your preferred window size and screen coordinates across restarts.
 
 ---
 
-### 🍏 Pengguna macOS
+## 📖 Installation Guide & Security Warnings
 
-#### Langkah Instalasi:
-1. Unduh berkas [**WhatsApp-Desk-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg).
-2. Klik ganda berkas `.dmg` tersebut untuk membukanya.
-3. Seret (*drag and drop*) ikon **WhatsApp Desk** ke folder **Applications**.
-4. Buka WhatsApp Desk dari Launchpad, folder Applications, atau Spotlight (`Cmd + Spasi`).
+Because this project is distributed independently and open-source (without an annual $99/year Apple Developer ID certificate or expensive Microsoft EV Code Signing certificate), your operating system might display an initial security prompt.
 
-#### ⚠️ Solusi Error: *"WhatsApp" is damaged and can't be opened. You should move it to the Trash* atau *Unidentified Developer*
+Here are quick, standard instructions for each operating system:
 
-Jika Anda mengunduh lewat Safari atau Chrome, macOS Gatekeeper otomatis menempelkan atribut karantina (*quarantine attribute*). Ini **bukan** berarti berkasnya rusak, melainkan proteksi bawaan macOS untuk aplikasi dari luar App Store.
+---
 
-Pilih salah satu cara mudah di bawah ini untuk membukanya:
+### 🍏 macOS Installation
 
-- **Cara 1: Lewat Klik Kanan (Paling Praktis, Tanpa Terminal)**:
-  1. Buka folder **Applications** di Finder.
-  2. **Klik Kanan (atau tahan tombol `Control` lalu klik)** pada ikon **WhatsApp Desk**.
-  3. Pilih menu **Open**.
-  4. Akan muncul dialog konfirmasi dengan tombol **Open** (bukan Move to Trash). Klik tombol **Open**.
-  5. Aplikasi akan langsung terbuka, dan untuk seterusnya Anda bisa membukanya dengan klik kiri biasa.
+#### Steps:
+1. Download [**WhatsApp-Desk-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg).
+2. Double-click the `.dmg` file to mount it.
+3. Drag and drop the **WhatsApp Desk** icon into your **Applications** folder.
+4. Launch WhatsApp Desk from Launchpad, Spotlight (`Cmd + Space`), or Applications.
 
-- **Cara 2: Lewat Terminal (Hapus Quarantine Flag Sekali Saja)**:
-  Buka aplikasi **Terminal**, salin dan jalankan perintah berikut:
+#### ⚠️ How to Resolve: *"WhatsApp Desk is damaged and can't be opened"* or *Unidentified Developer*
+If downloaded via Safari or Chrome, macOS Gatekeeper automatically applies an extended quarantine attribute. This is standard macOS protection for third-party open-source applications outside the Mac App Store.
+
+Choose either simple method below to launch the app:
+
+- **Method 1: Right-Click Open (Easiest, No Terminal Required)**:
+  1. Open your **Applications** folder in Finder.
+  2. **Right-Click (or hold `Control` and click)** on **WhatsApp Desk**.
+  3. Select **Open** from the context menu.
+  4. In the security dialog, click **Open**.
+  5. The application will launch immediately and will open normally with a regular left-click thereafter.
+
+- **Method 2: Via Terminal (Remove Quarantine Flag)**:
+  Open **Terminal** and run:
   ```bash
   xattr -cr "/Applications/WhatsApp Desk.app"
   ```
-  *(Atau jika berkas installer masih berada di folder Downloads: `xattr -cr ~/Downloads/"WhatsApp Desk.app"`)*
+  *(Or if the app is still in your Downloads directory: `xattr -cr ~/Downloads/"WhatsApp Desk.app"`)*
 
-*Catatan: Mendukung macOS 11.0 (Big Sur) ke atas. Biner bersifat Universal, sehingga berjalan optimal secara native baik di Apple Silicon (M1/M2/M3/M4) maupun Mac berbasis Intel.*
-
----
-
-### 🪟 Pengguna Windows
-
-#### Langkah Instalasi:
-1. Unduh berkas [**WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe).
-2. Simpan berkas di folder yang Anda inginkan (misalnya `D:\Apps`, `Program Files`, atau Desktop).
-3. Buat pintasan (*shortcut*) ke Desktop atau Start Menu jika diperlukan.
-4. Klik ganda `WhatsApp.exe` untuk langsung menjalankannya (portabel tanpa perlu proses instalasi).
-
-#### ⚠️ Mengatasi Peringatan Windows SmartScreen (*"Windows protected your PC"*):
-1. Saat jendela biru SmartScreen muncul, klik tautan teks **"More info"** (*Info selengkapnya*).
-2. Klik tombol **"Run anyway"** (*Tetap jalankan*).
-3. Aplikasi akan langsung terbuka normal.
-
-*Catatan: Memerlukan Microsoft Edge WebView2 Runtime (secara default sudah terpasang di Windows 10 update terbaru dan seluruh versi Windows 11).*
+*Note: Requires macOS 11.0 (Big Sur) or higher. Native Universal binary for both Apple Silicon (M1/M2/M3/M4) and Intel.*
 
 ---
 
-### 🐧 Pengguna Linux
+### 🪟 Windows Installation
 
-#### Pilihan A: Menggunakan Paket Debian / Ubuntu (.deb)
+#### Steps:
+1. Download [**WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe) or [**WhatsApp-Desk-Windows-x64.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64.zip).
+2. Place the file in your preferred folder (e.g., `C:\Apps\WhatsAppDesk` or Desktop).
+3. Create a shortcut to your Desktop or Start Menu if desired.
+4. Double-click `WhatsApp.exe` to run (portable, no installer needed).
+
+#### ⚠️ Bypassing Windows SmartScreen (*"Windows protected your PC"*):
+1. When the blue SmartScreen prompt appears, click **"More info"**.
+2. Click **"Run anyway"**.
+3. The app will launch immediately.
+
+*Note: Requires Microsoft Edge WebView2 Runtime (pre-installed by default on Windows 11 and up-to-date Windows 10).*
+
+---
+
+### 🐧 Linux Installation
+
+#### Option A: Debian / Ubuntu (.deb package)
 ```bash
 sudo dpkg -i WhatsApp-Desk-Linux-amd64.deb
-sudo apt-get install -f # pasang dependensi jika belum lengkap
+sudo apt-get install -f # resolve any missing dependencies if needed
 ```
-Aplikasi akan otomatis terpasang dan muncul di Application Menu / App Launcher desktop Anda.
+The app will be installed and appear in your desktop Application Menu / App Launcher.
 
-#### Pilihan B: Menggunakan Tarball Portabel (.tar.gz)
+#### Option B: Portable Tarball (.tar.gz)
 ```bash
 tar -xzf WhatsApp-Desk-Linux-x64.tar.gz
 cd dist_linux
@@ -155,78 +155,79 @@ chmod +x whatsapp-desk
 
 ---
 
-## Pintasan Keyboard
+## ⌨️ Keyboard Shortcuts
 
-| macOS | Windows | Fungsi |
+| macOS | Windows / Linux | Action |
 | :--- | :--- | :--- |
-| `Cmd + Shift + P` | `Ctrl + Shift + P` | Toggle Mode Privasi (blur pesan & media di tempat umum) |
-| `Cmd + Shift + T` | `Ctrl + Shift + T` | Toggle Always on Top (pin jendela agar selalu di barisan depan) |
-| `Cmd + Shift + M` | `Ctrl + Shift + M` | Toggle Mute audio notifikasi obrolan |
-| `Cmd + Shift + S` | `Ctrl + Shift + S` | Toggle buka otomatis saat komputer menyala (Auto-Start) |
-| `Cmd + R` / `F5` | `Ctrl + R` / `F5` | Reload percakapan WhatsApp |
-| `Cmd + Shift + R` | `Ctrl + Shift + R` | Hard refresh (memuat ulang & membersihkan cache) |
-| `Cmd + Shift + U` | `Ctrl + Shift + U` | Memeriksa dan memasang pembaruan aplikasi (In-App Updater) |
-| `Cmd + ,` | `Ctrl + ,` | Membuka jendela Pengaturan (Lokasi Unduhan & Info Pintasan) |
-| `Cmd + Shift + D` | `Ctrl + Shift + D` | Membuka folder penyimpanan unduhan di Finder / File Explorer |
-| `Cmd + Shift + H` | `Ctrl + Shift + H` | Menampilkan kembali panduan fitur & pintasan |
-| `Cmd + +` / `Cmd + =` | `Ctrl + +` / `Ctrl + =` | Memperbesar ukuran tampilan (Zoom In) |
-| `Cmd + -` | `Ctrl + -` | Memperkecil ukuran tampilan (Zoom Out) |
-| `Cmd + 0` | `Ctrl + 0` | Mengembalikan ukuran tampilan ke default (100%) |
-| `Cmd + C` / `Cmd + V` | `Ctrl + C` / `Ctrl + V` | Menyalin / menempel teks atau media |
-| `Cmd + W` | `Alt + F4` | Menyembunyikan jendela ke background (aplikasi tetap aktif) |
-| `Cmd + Q` | `Alt + F4` | Menutup aplikasi secara penuh |
+| `Cmd + Shift + P` | `Ctrl + Shift + P` | Toggle Privacy Mode (blur messages & media in public) |
+| `Cmd + Shift + T` | `Ctrl + Shift + T` | Toggle Always on Top (pin window above other apps) |
+| `Cmd + Shift + M` | `Ctrl + Shift + M` | Toggle Mute chat notification audio |
+| `Cmd + Shift + S` | `Ctrl + Shift + S` | Toggle Auto-Start on system boot |
+| `Cmd + R` / `F5` | `Ctrl + R` / `F5` | Reload WhatsApp conversation view |
+| `Cmd + Shift + R` | `Ctrl + Shift + R` | Hard refresh (reload and flush UI cache) |
+| `Cmd + Shift + U` | `Ctrl + Shift + U` | Check for and install updates (In-App Auto-Updater) |
+| `Cmd + ,` | `Ctrl + ,` | Open Settings (Downloads location & shortcuts info) |
+| `Cmd + Shift + D` | `Ctrl + Shift + D` | Open downloads storage folder in Finder / Explorer |
+| `Cmd + Shift + H` | `Ctrl + Shift + H` | Re-open welcome guide & shortcuts overview |
+| `Cmd + +` / `Cmd + =` | `Ctrl + +` / `Ctrl + =` | Zoom in interface |
+| `Cmd + -` | `Ctrl + -` | Zoom out interface |
+| `Cmd + 0` | `Ctrl + 0` | Reset interface zoom to default (100%) |
+| `Cmd + C` / `Cmd + V` | `Ctrl + C` / `Ctrl + V` | Copy / Paste text or media |
+| `Cmd + W` | `Alt + F4` | Hide window to background (app remains active) |
+| `Cmd + Q` | `Alt + F4` | Quit application completely |
 
 ---
 
-## 🔒 Keamanan & Privasi Data
+## 🔒 Security & Data Privacy
 
-- **Tanpa Server Perantara (Direct to Meta)**: Aplikasi ini memuat langsung antarmuka resmi WhatsApp Web (`https://web.whatsapp.com`) dari server Meta. Tidak ada server relai, proksi, analitik pihak ketiga, atau backend perantara yang terlibat.
-- **Enkripsi Penuh (End-to-End)**: Percakapan dienkripsi secara end-to-end menggunakan protokol Signal resmi bawaan WhatsApp pada sisi browser.
-- **Penyimpanan Terisolasi**: Kredensial akun dan data cache disimpan di direktori data lokal pengguna:
+- **Direct to Meta (Zero Middleman)**: This application connects directly to official WhatsApp Web servers (`https://web.whatsapp.com`). There are no relay servers, third-party proxies, analytics trackers, or intermediate backend services.
+- **Official End-to-End Encryption**: All chats and voice/video calls remain encrypted end-to-end using WhatsApp's native Signal Protocol implementation inside the browser engine.
+- **Isolated Local Storage**: User credentials, session tokens, and local cache are stored securely in your OS user directory:
   - **macOS**: `~/Library/Application Support/WhatsAppDesk/UserData/`
   - **Windows**: `%APPDATA%\WhatsAppDesk\UserData\`
   - **Linux**: `~/.config/whatsapp-desk/`
-- **Bebas Iklan & Pelacak**: Tanpa pelacak pihak ketiga, tanpa telemetri data pribadi, dan hemat konsumsi data jaringan.
+- **Zero Ads & Telemetry**: 100% free of advertisements, data tracking, or telemetry overhead.
 
 ---
 
-## 📋 Riwayat Pembaruan (Changelog)
+## 📋 Changelog
 
-- **v1.5.3 (Terbaru)**:
-  - 🪟 **Perbaikan Blank Hitam Windows 10 & 11**: Konfigurasi Job Object dengan izin *Silent Breakaway* untuk proses anak Chromium, menghapus proses killer startup yang mematikan WebView2 sendiri, dan membersihkan argumen engine.
-  - 🍎 **Stabilitas Menu Bar macOS**: Pengikatan jendela utama yang persisten (`appWindow()`) dan pencegahan penolakan Promise WebKit.
-  - ⚡ **Pembaruan Biner Rilis**: Paket rilis Windows ZIP/EXE dan macOS DMG/ZIP diperbarui dengan performa maksimal.
+- **v1.5.3 (Latest)**:
+  - 📄 **Multi-Format In-App Document Preview**: Instant preview modal for **PDF**, **Excel** (`.xlsx`, `.xls`, `.csv`), **Word** (`.docx`, `.doc`), and **Text** (`.txt`) directly in chat with native app opening support.
+  - 🛠️ **Media Viewer & ✕ Close Button Fix**: Resolved an issue where clicking the close button or toolbar buttons in WhatsApp Web's media viewer failed to return to the active chat screen.
+  - 🪟 **Windows 10 & 11 Black Screen Fix**: Configured Windows Job Object with *Silent Breakaway* permission (`JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK`), eliminated startup process termination conflicts, and optimized Chromium command-line flags.
+  - 🍎 **macOS Menu Stability**: Bound native menu actions to a persistent window reference (`appWindow()`) and protected WebKit evaluation against unhandled Promise rejections.
 - **v1.5.2**:
-  - 📄 **In-App Document Preview Modal**: Pratinjau langsung berkas PDF di dalam aplikasi dengan dark backdrop blur.
-  - 🔄 **Auto-Dismiss Loading Spinner**: Menutup otomatis viewer bawaan WhatsApp yang terjebak loading muter-muter akibat restriksi cross-origin Adobe Acrobat Web SDK.
-  - 📂 **Tombol Aksi Cepat**: Membuka instan ke viewer sistem (Apple Preview / Default PDF Reader) dan tombol simpan berkas.
+  - 📄 **In-App Document Preview**: In-app PDF viewer with dark blurred backdrop.
+  - 🔄 **Stuck Spinner Auto-Dismiss**: Automatically dismissed stuck media viewer spinners caused by cross-origin Adobe Acrobat Web SDK limitations.
+  - 📂 **Quick Action Controls**: Instant "Open in System App" (Apple Preview / Default Viewer) and save file buttons.
 - **v1.5.1**:
-  - 🔔 **Fokus Jendela via Klik Notifikasi**: Mengklik push notification native otomatis memunculkan dan memfokuskan jendela obrolan ke depan layar.
-  - 🌓 **Sinkronisasi Tema Otomatis**: Integrasi tema Dark, Light, dan Auto mengikuti pengaturan tema sistem operasi di Windows, macOS, dan Linux.
-  - 🚀 **Optimasi GPU Scrolling**: Menghapus script pembersihan memori agresif yang menyebabkan gerakan scroll tersendat di macOS.
+  - 🔔 **Notification Window Focusing**: Clicking native OS push notifications automatically brings the chat window to the foreground.
+  - 🌓 **Automatic Theme Synchronization**: Dynamic Dark, Light, and System theme synchronization matching OS appearance settings.
+  - 🚀 **GPU Smooth Scrolling**: Eliminated aggressive memory cleanup during scrolling.
 - **v1.5.0**:
-  - 🔄 **In-App Auto-Updater**: Integrasi pembaruan otomatis satu-klik berbasis GitHub Releases.
-  - 📁 **Download Manager Chat Permanen**: Berkas unduhan otomatis tersimpan di folder sistem (`Downloads/WhatsApp Downloads`) dengan dialog pemilihan folder native.
-  - 🎛️ **Control Center Toolbar**: Akses cepat pintasan mode privasi, always-on-top, dan mute suara di header obrolan.
+  - 🔄 **In-App Auto-Updater**: One-click background updates via GitHub Releases.
+  - 📁 **Permanent Downloads Manager**: Auto-saves received files to `Downloads/WhatsApp Downloads` with custom native folder picker.
+  - 🎛️ **Control Center Toolbar**: Quick access toolbar in chat header for privacy mode, always-on-top, and audio mute.
 - **v1.4.0**:
-  - 🍏 **Universal Binary macOS**: Mendukung Apple Silicon M-Series dan prosesor Intel dalam satu paket aplikasi tunggal.
-  - 📐 **Dynamic Resizing**: Jendela aplikasi dapat diubah ukurannya secara bebas dan responsif hingga ukuran kompak.
-  - 📘 **Layar Onboarding Perdana**: Sambutan ringkas saat pertama kali membuka aplikasi dengan informasi fitur utama.
+  - 🍏 **Universal Binary for macOS**: Native support for Apple Silicon and Intel Macs.
+  - 📐 **Responsive Resizing**: Compact window resizing with minimum width constraints.
+  - 📘 **Onboarding Guide**: Clean intro modal explaining key features and shortcuts.
 
 ---
 
-## 📦 Distribusi Biner Resmi
+## 📦 Official Binary Releases
 
-Untuk performa optimal, integritas file, dan kemudahan penggunaan, pengguna disarankan langsung mengunduh biner rilis resmi yang sudah dikompilasi dan dikemas pada tabel [Unduh / Download](#unduh--download-versi-v153) di atas. Versi rilis telah diuji stabilitasnya untuk lingkungan macOS (Apple Silicon & Intel), Windows 10/11, dan Linux.
-
----
-
-## Lisensi
-
-Proyek ini dilisensikan di bawah [MIT License](LICENSE).
+For optimal performance and ease of use, download the precompiled official binaries from the [Download Table](#-download-release-v153) above. All releases are tested for macOS (Apple Silicon & Intel), Windows 10/11, and Linux.
 
 ---
 
-## Penafian (Disclaimer)
+## License
 
-Proyek ini merupakan perangkat lunak independen dan tidak berafiliasi, disponsori, atau didukung secara resmi oleh WhatsApp atau Meta Platforms, Inc. WhatsApp adalah merek dagang terdaftar milik Meta Platforms, Inc.
+This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## Disclaimer
+
+This project is an independent open-source software and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with WhatsApp or Meta Platforms, Inc. WhatsApp is a registered trademark of Meta Platforms, Inc.
