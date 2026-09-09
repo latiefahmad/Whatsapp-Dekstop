@@ -21,7 +21,7 @@ func getInitScript(ua string) string {
 		clientArch = "x86"
 	}
 
-	return `
+	return xlsxLibJS + `
 		// UserAgent and platform override to Google Chrome
 		Object.defineProperty(navigator, 'userAgent', {
 			get: () => '` + ua + `'
@@ -164,26 +164,26 @@ func getInitScript(ua string) string {
 				return res;
 			};
 
-			// Automatically prepare all video/audio elements injected into DOM
+			// Automatically prepare all video/audio elements injected into DOM.
+			// Chat-list scrolling can trigger very frequent DOM churn (virtualized rows
+			// being recycled), so instead of walking every individual mutation record as
+			// it arrives, coalesce all pending mutations into a single lightweight scan
+			// per animation frame. prepareMedia() is idempotent (guarded by
+			// __wa_media_ready), so batching this way never misses an element.
 			if (window.MutationObserver) {
-				var mediaObserver = new MutationObserver(function(mutations) {
+				var mediaScanScheduled = false;
+				function scanForUnpreparedMedia() {
+					mediaScanScheduled = false;
 					if (shouldPauseBackgroundWork()) return;
-					for (var m = 0; m < mutations.length; m++) {
-						var added = mutations[m].addedNodes;
-						for (var n = 0; n < added.length; n++) {
-							var node = added[n];
-							if (node.nodeType === 1) {
-								if (node.tagName === 'VIDEO' || node.tagName === 'AUDIO') {
-									prepareMedia(node);
-								} else if (node.querySelectorAll) {
-									var list = node.querySelectorAll('video, audio');
-									for (var l = 0; l < list.length; l++) {
-										prepareMedia(list[l]);
-									}
-								}
-							}
-						}
-					}
+					var root = document.body || document.documentElement;
+					if (!root || !root.querySelectorAll) return;
+					var list = root.querySelectorAll('video, audio');
+					for (var l = 0; l < list.length; l++) prepareMedia(list[l]);
+				}
+				var mediaObserver = new MutationObserver(function() {
+					if (shouldPauseBackgroundWork() || mediaScanScheduled) return;
+					mediaScanScheduled = true;
+					requestAnimationFrame(scanForUnpreparedMedia);
 				});
 				var targetNode = document.documentElement || document.body;
 				if (targetNode) {
@@ -540,113 +540,10 @@ func getInitScript(ua string) string {
 			return html.join('');
 		}
 
-		function parseXlsxToHtml(sheetXml, stringsXml) {
-			if (!sheetXml) return '';
-			var sharedStrings = [];
-			if (stringsXml) {
-				var siMatches = stringsXml.match(/<si\b[\s\S]*?<\/si>/g) || [];
-				for (var s = 0; s < siMatches.length; s++) {
-					var tMatches = siMatches[s].match(/<t\b[^>]*>([\s\S]*?)<\/t>/g) || [];
-					var strVal = '';
-					for (var tm = 0; tm < tMatches.length; tm++) {
-						strVal += tMatches[tm].replace(/<t\b[^>]*>|<\/t>/g, '');
-					}
-					sharedStrings.push(strVal);
-				}
-			}
-
-			var rowMatches = sheetXml.match(/<row\b[\s\S]*?<\/row>/g) || [];
-			if (!rowMatches.length) return '<div style="padding:20px;color:#8696a0;">Spreadsheet is empty.</div>';
-
-			var colMap = {};
-			var parsedRows = [];
-
-			for (var r = 0; r < Math.min(rowMatches.length, 300); r++) {
-				var rStr = rowMatches[r];
-				var rowObj = {};
-				var cellMatches = rStr.match(/<c\b[\s\S]*?<\/c>|<c\b[^>]*\/>/g) || [];
-				for (var c = 0; c < cellMatches.length; c++) {
-					var cStr = cellMatches[c];
-					var refMatch = cStr.match(/r="([A-Z]+)(\d+)"/);
-					if (!refMatch) continue;
-					var colLetter = refMatch[1];
-					colMap[colLetter] = true;
-					var isShared = cStr.indexOf('t="s"') !== -1;
-					var vMatch = cStr.match(/<v>([\s\S]*?)<\/v>/);
-					var val = vMatch ? vMatch[1] : '';
-					if (isShared && sharedStrings[parseInt(val, 10)] !== undefined) {
-						val = sharedStrings[parseInt(val, 10)];
-					}
-					rowObj[colLetter] = val;
-				}
-				parsedRows.push(rowObj);
-			}
-
-			var cols = Object.keys(colMap).sort(function(a, b) {
-				if (a.length !== b.length) return a.length - b.length;
-				return a.localeCompare(b);
-			});
-			if (!cols.length) cols = ['A', 'B', 'C', 'D', 'E'];
-
-			var tableHtml = '<div style="width:100%;height:100%;overflow:auto;background:#111b21;">' +
-				'<table style="width:100%;border-collapse:collapse;font-family:system-ui,-apple-system,sans-serif;font-size:12px;color:#e9edef;table-layout:auto;">' +
-				'<thead><tr style="background:#202c33;position:sticky;top:0;z-index:2;box-shadow:0 1px 0 #2a3942;">' +
-				'<th style="width:40px;padding:6px 8px;border:1px solid #2a3942;color:#8696a0;text-align:center;font-weight:600;font-size:11px;">#</th>';
-
-			for (var ci = 0; ci < cols.length; ci++) {
-				tableHtml += '<th style="padding:6px 10px;border:1px solid #2a3942;color:#00a884;text-align:center;font-weight:600;min-width:90px;">' + cols[ci] + '</th>';
-			}
-			tableHtml += '</tr></thead><tbody>';
-
-			for (var ri = 0; ri < parsedRows.length; ri++) {
-				var row = parsedRows[ri];
-				var bg = ri % 2 === 0 ? '#111b21' : '#182229';
-				tableHtml += '<tr style="background:' + bg + ';">' +
-					'<td style="padding:5px 8px;border:1px solid #2a3942;color:#8696a0;text-align:center;font-weight:600;font-size:10.5px;">' + (ri + 1) + '</td>';
-				for (var cj = 0; cj < cols.length; cj++) {
-					var cellVal = row[cols[cj]] || '';
-					var escVal = cellVal.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-					tableHtml += '<td style="padding:6px 10px;border:1px solid #2a3942;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis;">' + escVal + '</td>';
-				}
-				tableHtml += '</tr>';
-			}
-
-			tableHtml += '</tbody></table></div>';
-			return tableHtml;
-		}
-
-		function parseCsvToHtml(csvText) {
-			if (!csvText) return '';
-			var lines = csvText.split(/\r?\n/).filter(function(l) { return l.trim().length > 0; });
-			if (!lines.length) return '<div style="padding:20px;color:#8696a0;">CSV file is empty.</div>';
-
-			var delimiter = lines[0].indexOf(';') !== -1 ? ';' : ',';
-			var tableHtml = '<div style="width:100%;height:100%;overflow:auto;background:#111b21;">' +
-				'<table style="width:100%;border-collapse:collapse;font-family:system-ui,-apple-system,sans-serif;font-size:12px;color:#e9edef;">' +
-				'<thead><tr style="background:#202c33;position:sticky;top:0;z-index:2;box-shadow:0 1px 0 #2a3942;">' +
-				'<th style="width:40px;padding:6px 8px;border:1px solid #2a3942;color:#8696a0;text-align:center;font-size:11px;">#</th>';
-
-			var headerCols = lines[0].split(delimiter);
-			for (var h = 0; h < headerCols.length; h++) {
-				var hName = headerCols[h].replace(/^["']|["']$/g, '').trim();
-				tableHtml += '<th style="padding:6px 10px;border:1px solid #2a3942;color:#00a884;text-align:left;font-weight:600;min-width:100px;">' + hName + '</th>';
-			}
-			tableHtml += '</tr></thead><tbody>';
-
-			for (var i = 1; i < Math.min(lines.length, 300); i++) {
-				var cols = lines[i].split(delimiter);
-				var bg = i % 2 === 0 ? '#111b21' : '#182229';
-				tableHtml += '<tr style="background:' + bg + ';"><td style="padding:5px 8px;border:1px solid #2a3942;color:#8696a0;text-align:center;font-size:10.5px;">' + i + '</td>';
-				for (var j = 0; j < headerCols.length; j++) {
-					var val = (cols[j] || '').replace(/^["']|["']$/g, '').trim();
-					val = val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-					tableHtml += '<td style="padding:6px 10px;border:1px solid #2a3942;white-space:nowrap;">' + val + '</td>';
-				}
-				tableHtml += '</tr>';
-			}
-			tableHtml += '</tbody></table></div>';
-			return tableHtml;
-		}
+		// Spreadsheet preview (.xlsx, .xls, .csv) is rendered via the bundled SheetJS
+		// library (see renderSpreadsheetPreview / showInAppDocModal below), which can
+		// read both modern OOXML and legacy binary Excel formats directly from bytes,
+		// so a hand-rolled XML/CSV parser is no longer needed here.
 
 		// In-App Document Preview Modal Overlay (PDF, Excel, Word, Text)
 		function showInAppDocModal(filename, blobUrl, savedPath, dataUri, ownedBlobUrl) {
@@ -769,6 +666,46 @@ func getInitScript(ua string) string {
 				};
 			}
 
+			// Render a parsed spreadsheet workbook (from the bundled SheetJS library) as an
+			// HTML table, with a sheet-switcher tab bar when the workbook has multiple sheets.
+			function renderSpreadsheetPreview(workbook, activeSheetName) {
+				var sheetNames = (workbook && workbook.SheetNames) || [];
+				if (!sheetNames.length) {
+					renderCardFallback('This spreadsheet has no readable sheets.');
+					return;
+				}
+				var activeName = (activeSheetName && sheetNames.indexOf(activeSheetName) !== -1) ? activeSheetName : sheetNames[0];
+				var worksheet = workbook.Sheets[activeName];
+				var tableHtml = XLSX.utils.sheet_to_html(worksheet, { id: 'wa-xlsx-table' });
+
+				var tabsHtml = '';
+				if (sheetNames.length > 1) {
+					tabsHtml = '<div id="wa-xlsx-tabs" style="display:flex;gap:4px;padding:8px 12px;background:#202c33;border-bottom:1px solid #2a3942;overflow-x:auto;flex-shrink:0;">';
+					for (var si = 0; si < sheetNames.length; si++) {
+						var name = sheetNames[si];
+						var active = name === activeName;
+						var safeName = name.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+						tabsHtml += '<button data-sheet="' + safeName + '" style="padding:5px 12px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;white-space:nowrap;border:1px solid ' + (active ? '#00a884' : '#2a3942') + ';background:' + (active ? '#00a884' : 'transparent') + ';color:' + (active ? '#111b21' : '#8696a0') + ';">' + safeName + '</button>';
+					}
+					tabsHtml += '</div>';
+				}
+
+				var tableStyle = '<style>#wa-xlsx-table{border-collapse:collapse;width:100%;font-family:system-ui,-apple-system,sans-serif;font-size:12px;color:#e9edef;}#wa-xlsx-table td,#wa-xlsx-table th{border:1px solid #2a3942;padding:6px 10px;white-space:nowrap;}#wa-xlsx-table tr:nth-child(even){background:#182229;}#wa-xlsx-table tr:nth-child(odd){background:#111b21;}</style>';
+
+				body.innerHTML = '<div style="width:100%;height:100%;display:flex;flex-direction:column;">' + tabsHtml +
+					'<div style="flex:1;overflow:auto;background:#111b21;">' + tableStyle + tableHtml + '</div></div>';
+
+				var tabsEl = document.getElementById('wa-xlsx-tabs');
+				if (tabsEl) {
+					var tabBtns = tabsEl.querySelectorAll('button');
+					for (var bi2 = 0; bi2 < tabBtns.length; bi2++) {
+						tabBtns[bi2].onclick = function() {
+							renderSpreadsheetPreview(workbook, this.getAttribute('data-sheet'));
+						};
+					}
+				}
+			}
+
 			// Render content according to file type
 			if (isPdf) {
 				var pdfSrc = ownedBlobUrl || blobUrl || '';
@@ -780,40 +717,23 @@ func getInitScript(ua string) string {
 				} else {
 					renderCardFallback();
 				}
-			} else if (ext === 'csv') {
+			} else if (ext === 'csv' || ext === 'xlsx' || ext === 'xls') {
+				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Loading spreadsheet preview...</div>';
 				try {
-					var rawBase64 = (dataUri || '').indexOf(';base64,') !== -1 ? (dataUri || '').split(';base64,')[1] : (dataUri || '');
-					var binStr = atob(rawBase64);
-					var bytes = new Uint8Array(binStr.length);
-					for (var bi = 0; bi < binStr.length; bi++) bytes[bi] = binStr.charCodeAt(bi);
-					var csvText = new TextDecoder('utf-8').decode(bytes);
-					body.innerHTML = parseCsvToHtml(csvText);
-				} catch (e) {
-					renderCardFallback();
-				}
-			} else if (ext === 'xlsx') {
-				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Loading Excel preview...</div>';
-				var uint8 = base64ToUint8Array(dataUri || '');
-				if (uint8) {
-					var parsePromise = Promise.all([
-						readZipEntryText(uint8, 'xl/worksheets/sheet1.xml'),
-						readZipEntryText(uint8, 'xl/sharedStrings.xml')
-					]);
-					var timeoutPromise = new Promise(function(resolve) { setTimeout(function() { resolve(null); }, 2000); });
-					Promise.race([parsePromise, timeoutPromise]).then(function(res) {
-						if (res && res[0]) {
-							body.innerHTML = parseXlsxToHtml(res[0], res[1]);
-						} else {
-							renderCardFallback();
-						}
-					}).catch(function() {
+					var rawXlsxB64 = (dataUri || '').indexOf(';base64,') !== -1 ? dataUri.split(';base64,')[1] : (dataUri || '');
+					if (rawXlsxB64 && window.XLSX) {
+						// SheetJS auto-detects the real format from the bytes (OOXML zip for
+						// .xlsx, binary OLE2/BIFF for legacy .xls, or plain text for .csv), so
+						// one code path correctly previews all three, including .xls which the
+						// previous hand-rolled parser never actually supported.
+						var workbook = XLSX.read(rawXlsxB64, { type: 'base64', cellDates: true });
+						renderSpreadsheetPreview(workbook);
+					} else {
 						renderCardFallback();
-					});
-				} else {
-					renderCardFallback();
+					}
+				} catch (e) {
+					renderCardFallback('Unable to render an in-app preview for this spreadsheet. Click below to open it in your default application.');
 				}
-			} else if (ext === 'xls') {
-				renderCardFallback('Excel 97-2003 Workbook (.xls). Click below to open in your default spreadsheet application.');
 			} else if (ext === 'docx') {
 				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Loading Word preview...</div>';
 				var uint8Doc = base64ToUint8Array(dataUri || '');
@@ -1076,10 +996,12 @@ func getInitScript(ua string) string {
 				if (!document.hidden) return;
 				lastClickedDocName = '';
 				lastDocumentIntentAt = 0;
+				// Wait a bit longer than a quick alt-tab before trimming memory, so briefly
+				// switching windows doesn't repeatedly trigger native working-set trims.
 				releaseTimer = setTimeout(function() {
 					if (typeof window.gc === 'function') window.gc();
 					if (window.releaseMemoryNative) window.releaseMemoryNative();
-				}, 1500);
+				}, 5000);
 			});
 		})();
 
@@ -1710,11 +1632,19 @@ func getInitScript(ua string) string {
 				}
 			}, true);
 
-			// Hook 4: MutationObserver to auto-dismiss stuck media viewer and trigger download/preview
+			// Hook 4: MutationObserver to auto-dismiss stuck media viewer and trigger download/preview.
+			// This observes the whole document body (subtree), which also churns heavily while
+			// the chat list is scrolled, so coalesce to at most one check per animation frame
+			// instead of running on every individual mutation batch.
+			var viewerCheckScheduled = false;
 			var viewerObserver = new MutationObserver(function() {
-				if (shouldPauseBackgroundWork()) return;
-				if (!isRecentPDFIntent()) return;
-				if (!document.getElementById('wa-doc-modal-overlay')) triggerVisibleViewerDownload();
+				if (shouldPauseBackgroundWork() || !isRecentPDFIntent() || viewerCheckScheduled) return;
+				viewerCheckScheduled = true;
+				requestAnimationFrame(function() {
+					viewerCheckScheduled = false;
+					if (!isRecentPDFIntent()) return;
+					if (!document.getElementById('wa-doc-modal-overlay')) triggerVisibleViewerDownload();
+				});
 			});
 
 			function initViewerObserver() {
@@ -1799,18 +1729,28 @@ func getInitScript(ua string) string {
 
 				// 2. Synchronize WhatsApp Web's own localStorage keys
 				try {
-					if (theme === 'system') {
-						localStorage.setItem('system-theme-mode', 'true');
-						localStorage.setItem('theme', JSON.stringify(isDark ? 'dark' : 'light'));
-					} else {
-						localStorage.setItem('system-theme-mode', 'false');
-						localStorage.setItem('theme', JSON.stringify(theme));
+					var themeModeVal = theme === 'system' ? 'true' : 'false';
+					var themeVal = JSON.stringify(theme === 'system' ? (isDark ? 'dark' : 'light') : theme);
+					localStorage.setItem('system-theme-mode', themeModeVal);
+					localStorage.setItem('theme', themeVal);
+					// A plain localStorage.setItem() never fires a 'storage' DOM event in the
+					// SAME window/document that made the change (only other tabs get notified).
+					// WhatsApp Web's own already-running scripts may rely on that event to react
+					// to theme changes, so dispatch a synthetic one to keep them in sync too.
+					if (window.StorageEvent) {
+						try {
+							window.dispatchEvent(new StorageEvent('storage', { key: 'theme', newValue: themeVal, storageArea: localStorage }));
+							window.dispatchEvent(new StorageEvent('storage', { key: 'system-theme-mode', newValue: themeModeVal, storageArea: localStorage }));
+						} catch (e2) {}
 					}
 				} catch(e) {}
 
-				// 3. Update modal if visible
+				// 3. Update modal and toolbar button if visible
 				if (window.syncModalTheme) {
 					window.syncModalTheme(isDark);
+				}
+				if (window.syncToolbarBtnTheme) {
+					window.syncToolbarBtnTheme(isDark);
 				}
 
 				// 4. Ensure MutationObserver prevents WhatsApp from reverting body theme class
@@ -1898,11 +1838,26 @@ func getInitScript(ua string) string {
 				btn.id = 'wa-toolbar-settings-btn';
 				btn.setAttribute('aria-label', 'Settings & Controls');
 				btn.title = 'Settings & Controls (' + (isMac ? 'Cmd' : 'Ctrl') + ' + ,)';
-				btn.style.cssText = 'width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:none;color:#aebac1;cursor:pointer;outline:none;transition:background-color 0.15s ease, color 0.15s ease;flex-shrink:0;margin:0 2px;';
+				btn.style.cssText = 'width:40px;height:40px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:none;cursor:pointer;outline:none;transition:background-color 0.15s ease, color 0.15s ease;flex-shrink:0;margin:0 2px;';
 				btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
 					'<circle cx="12" cy="12" r="3"></circle>' +
 					'<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>' +
 					'</svg>';
+
+				// The header lives outside WhatsApp Web's own dark/light class toggling on
+				// <body>, so this button previously always kept the dark-theme icon color
+				// even when the app was switched to Light. Keep its resting color in sync
+				// with the current app theme instead of a hardcoded dark-mode gray.
+				function restingIconColor() {
+					var isDarkNow = currentTheme === 'system' ?
+						(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) :
+						(currentTheme === 'dark');
+					return isDarkNow ? '#aebac1' : '#54656f';
+				}
+				btn.style.color = restingIconColor();
+				window.syncToolbarBtnTheme = function() {
+					btn.style.color = restingIconColor();
+				};
 
 				btn.onmouseenter = function() {
 					btn.style.backgroundColor = document.body.classList.contains('dark') ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
@@ -1910,7 +1865,7 @@ func getInitScript(ua string) string {
 				};
 				btn.onmouseleave = function() {
 					btn.style.backgroundColor = 'transparent';
-					btn.style.color = '#aebac1';
+					btn.style.color = restingIconColor();
 				};
 				btn.onclick = function(e) {
 					e.stopPropagation();
