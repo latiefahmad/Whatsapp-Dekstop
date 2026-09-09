@@ -1356,6 +1356,24 @@ func getInitScript(ua string) string {
 
 		// Automatic Download & Document Preview Interceptor for Chat Files & Media
 		(function() {
+			var activeDownloadKeys = Object.create(null);
+
+			function downloadRequestKey(href, filename) {
+				return String(filename || '') + '\n' + String(href || '');
+			}
+
+			function releaseDownloadRequest(requestKey, immediately) {
+				if (immediately) {
+					delete activeDownloadKeys[requestKey];
+					return;
+				}
+				// Keep a short completion window because WhatsApp can dispatch the same
+				// click through more than one document/download observer.
+				setTimeout(function() {
+					delete activeDownloadKeys[requestKey];
+				}, 30000);
+			}
+
 			function isDocumentFileName(name) {
 				if (!name) return false;
 				var ext = name.toLowerCase();
@@ -1367,6 +1385,11 @@ func getInitScript(ua string) string {
 
 			function captureDownload(href, filename, shouldAutoOpen) {
 				if (!filename) filename = 'whatsapp_file';
+				var requestKey = downloadRequestKey(href, filename);
+				if (activeDownloadKeys[requestKey]) {
+					return;
+				}
+				activeDownloadKeys[requestKey] = true;
 				var isDoc = isDocumentFileName(filename);
 				if (shouldAutoOpen === undefined) {
 					shouldAutoOpen = isDoc;
@@ -1398,16 +1421,26 @@ func getInitScript(ua string) string {
 										if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
 										showFloatingToast('❌ Failed to save file.');
 									}
+									releaseDownloadRequest(requestKey, !savedPath);
 								}).catch(function() {
 									if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
 									showFloatingToast('❌ Error saving file.');
+									releaseDownloadRequest(requestKey, true);
 								});
+							} else {
+								if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
+								releaseDownloadRequest(requestKey, true);
 							}
+						};
+						reader.onerror = function() {
+							if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
+							releaseDownloadRequest(requestKey, true);
 						};
 						reader.readAsDataURL(blob);
 					})
 					.catch(function(err) {
 						console.error('Download intercept fetch error:', err);
+						releaseDownloadRequest(requestKey, true);
 					});
 			}
 
