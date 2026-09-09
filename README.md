@@ -9,18 +9,18 @@ WhatsApp Desk is a small desktop wrapper for the official WhatsApp Web. It uses 
 ## Application preview
 
 <p align="center">
-  <img src="screenshots/app-dark.png" width="360" alt="WhatsApp Desk chat view in dark mode">
+  <img src="screenshots/app-dark.png" width="900" alt="WhatsApp Desk main chat window">
 </p>
 
 <p align="center">
-  <img src="screenshots/macos-menu.png" width="760" alt="WhatsApp Desk menu on macOS">
+  <img src="screenshots/macos-menu.png" width="650" alt="WhatsApp Desk settings and appearance controls">
 </p>
 
 The screenshots use blurred chat content to protect personal information.
 
 ## Download
 
-Current release: **v1.5.4**
+Current release: **v1.5.5**
 
 | Platform | Download |
 | --- | --- |
@@ -87,12 +87,13 @@ Default profile locations:
 - Windows: `%APPDATA%\WhatsAppDesk\UserData\`
 - Linux: `~/.config/whatsapp-desk/`
 
-## Version 1.5.4
+## Version 1.5.5
 
 - Reliable document preview and close-to-chat behavior.
 - Cached preview reopening without duplicate downloads.
+- Reliable Light, Dark, and System appearance switching.
 - Lower background DOM work and more conservative media buffering.
-- Improved memory cleanup on macOS, Windows, and Linux.
+- Improved memory lifecycle on macOS, Windows, and Linux.
 - Working settings, download-folder controls, and update checks.
 
 Older releases are retained for reference but are deprecated.
