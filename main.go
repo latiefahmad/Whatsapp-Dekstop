@@ -46,6 +46,10 @@ func getInitScript(ua string) string {
 			delete window.safari;
 		} catch (e) {}
 
+		function shouldPauseBackgroundWork() {
+			return document.hidden === true;
+		}
+
 		// Emulate navigator.userAgentData (User-Agent Client Hints)
 		if (!navigator.userAgentData) {
 			Object.defineProperty(navigator, 'userAgentData', {
@@ -138,7 +142,7 @@ func getInitScript(ua string) string {
 					el.setAttribute('x5-playsinline', '');
 				}
 				if (!el.getAttribute('preload')) {
-					el.setAttribute('preload', 'auto');
+					el.setAttribute('preload', 'metadata');
 				}
 			}
 
@@ -163,6 +167,7 @@ func getInitScript(ua string) string {
 			// Automatically prepare all video/audio elements injected into DOM
 			if (window.MutationObserver) {
 				var mediaObserver = new MutationObserver(function(mutations) {
+					if (shouldPauseBackgroundWork()) return;
 					for (var m = 0; m < mutations.length; m++) {
 						var added = mutations[m].addedNodes;
 						for (var n = 0; n < added.length; n++) {
@@ -204,6 +209,10 @@ func getInitScript(ua string) string {
 		function dismissStuckViewer() {
 			var attempts = 0;
 			var dismissTimer = setInterval(function() {
+				if (shouldPauseBackgroundWork()) {
+					clearInterval(dismissTimer);
+					return;
+				}
 				attempts++;
 				var viewer = document.querySelector('[data-testid="media-viewer"]');
 				if (!viewer || attempts > 15) {
@@ -1571,6 +1580,10 @@ func getInitScript(ua string) string {
 
 					var checkCount = 0;
 					var checkTimer = setInterval(function() {
+						if (shouldPauseBackgroundWork()) {
+							clearInterval(checkTimer);
+							return;
+						}
 						checkCount++;
 						if (checkCount > 30) {
 							clearInterval(checkTimer);
@@ -1586,6 +1599,7 @@ func getInitScript(ua string) string {
 
 			// Hook 4: MutationObserver to auto-dismiss stuck media viewer and trigger download/preview
 			var viewerObserver = new MutationObserver(function() {
+				if (shouldPauseBackgroundWork()) return;
 				if (!isRecentPDFIntent()) return;
 				if (!document.getElementById('wa-doc-modal-overlay')) triggerVisibleViewerDownload();
 			});
@@ -1690,6 +1704,7 @@ func getInitScript(ua string) string {
 				if (window.MutationObserver && document.body) {
 					if (!themeObserver) {
 						themeObserver = new MutationObserver(function() {
+							if (shouldPauseBackgroundWork()) return;
 							var shouldBeDark = (currentTheme === 'system') ? getSystemIsDark() : (currentTheme === 'dark');
 							if (shouldBeDark && !document.body.classList.contains('dark')) {
 								document.body.classList.add('dark');
@@ -1747,6 +1762,7 @@ func getInitScript(ua string) string {
 			document.addEventListener('DOMContentLoaded', initTheme);
 			window.addEventListener('load', initTheme);
 			setInterval(function() {
+				if (shouldPauseBackgroundWork()) return;
 				if (document.body && !themeObserver) {
 					applyThemeToDOM(currentTheme);
 				}
@@ -1754,6 +1770,7 @@ func getInitScript(ua string) string {
 
 			// --- In-Flow Header Toolbar Button (Non-Floating, Clean WhatsApp Style) ---
 			function injectHeaderToolbarBtn() {
+				if (shouldPauseBackgroundWork()) return;
 				if (document.getElementById('wa-toolbar-settings-btn')) return;
 
 				// Target WhatsApp Web's left header above chats
