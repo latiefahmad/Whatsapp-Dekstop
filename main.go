@@ -209,14 +209,13 @@ func getInitScript(ua string) string {
 		function dismissStuckViewer() {
 			var attempts = 0;
 			var dismissTimer = setInterval(function() {
-				if (shouldPauseBackgroundWork()) {
+				attempts++;
+				if (attempts > 30) {
 					clearInterval(dismissTimer);
 					return;
 				}
-				attempts++;
-				var viewer = document.querySelector('[data-testid="media-viewer"]');
-				if (!viewer || attempts > 15) {
-					clearInterval(dismissTimer);
+				var viewer = document.querySelector('[data-testid="media-viewer"], [data-animate-media-viewer="true"]');
+				if (!viewer) {
 					return;
 				}
 				var closeSelectors = [
@@ -234,25 +233,32 @@ func getInitScript(ua string) string {
 					'[data-testid="btn-close"]',
 					'[data-testid="media-viewer-close"]'
 				];
+				var closed = false;
 				for (var i = 0; i < closeSelectors.length; i++) {
 					try {
 						var el = viewer.querySelector(closeSelectors[i]) || document.querySelector(closeSelectors[i]);
 						if (el) {
-							var btn = el.closest('button, [role="button"]') || el;
+							var btn = (el.closest && el.closest('button, [role="button"]')) || el;
 							btn.click();
-							clearInterval(dismissTimer);
-							return;
+							closed = true;
+							break;
 						}
 					} catch (e) {}
 				}
-				// One synthetic Escape may close WhatsApp's viewer when its close
-				// control is absent. Do not repeatedly send it to document/window:
-				// those events also reach our own preview modal.
-				if (attempts === 1) {
-					var escEvt = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true });
-					try { viewer.dispatchEvent(escEvt); } catch (e) {}
+				// Dispatch synthetic Escape tagged so our preview modal ignores it
+				var escEvt = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true });
+				escEvt._waViewerDismiss = true;
+				try {
+					viewer.dispatchEvent(escEvt);
+					var app = document.getElementById('app');
+					if (app) app.dispatchEvent(escEvt);
+				} catch (e) {}
+
+				if (closed || attempts > 6) {
+					viewer.style.display = 'none';
+					clearInterval(dismissTimer);
 				}
-			}, 150);
+			}, 80);
 		}
 		window.dismissStuckViewer = dismissStuckViewer;
 
@@ -420,6 +426,23 @@ func getInitScript(ua string) string {
 			}
 		}
 
+		async function decompressDeflateRaw(compressedData) {
+			if (typeof DecompressionStream === 'undefined') return null;
+			try {
+				var ds = new DecompressionStream('deflate-raw');
+				var stream = new Response(compressedData).body.pipeThrough(ds);
+				return await new Response(stream).text();
+			} catch (e) {
+				try {
+					var ds2 = new DecompressionStream('deflate');
+					var stream2 = new Response(compressedData).body.pipeThrough(ds2);
+					return await new Response(stream2).text();
+				} catch (e2) {
+					return null;
+				}
+			}
+		}
+
 		// Helper: Read a specific file from ZIP payload (e.g. word/document.xml, xl/worksheets/sheet1.xml)
 		async function readZipEntryText(uint8Array, targetPath) {
 			if (!uint8Array || uint8Array.length < 30) return null;
@@ -441,16 +464,11 @@ func getInitScript(ua string) string {
 							var compressedData = uint8Array.subarray(dataStart, dataEnd);
 							if (compMethod === 0) {
 								return new TextDecoder().decode(compressedData);
-							} else if (compMethod === 8 && typeof DecompressionStream !== 'undefined') {
-								var ds = new DecompressionStream('deflate-raw');
-								var writer = ds.writable.getWriter();
-								writer.write(compressedData);
-								writer.close();
-								var response = new Response(ds.readable);
-								return await response.text();
+							} else if (compMethod === 8) {
+								return await decompressDeflateRaw(compressedData);
 							}
 						}
-						offset = dataEnd;
+						offset = dataEnd > offset ? dataEnd : (offset + 1);
 					} else {
 						offset++;
 					}
@@ -459,6 +477,33 @@ func getInitScript(ua string) string {
 				console.warn('Zip read error:', e);
 			}
 			return null;
+		}
+
+		function parsePptxToHtml(slideXmls) {
+			if (!slideXmls || !slideXmls.length) return '';
+			var html = ['<div style="width:100%;height:100%;overflow-y:auto;padding:24px 16px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;background:#0c1317;">'];
+			for (var i = 0; i < slideXmls.length; i++) {
+				var xml = slideXmls[i];
+				if (!xml) continue;
+				var tMatches = xml.match(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g) || [];
+				var lines = [];
+				for (var t = 0; t < tMatches.length; t++) {
+					var rawT = tMatches[t].replace(/<a:t\b[^>]*>|<\/a:t>/g, '');
+					rawT = rawT.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
+					if (rawT) lines.push(rawT);
+				}
+				if (lines.length) {
+					html.push('<div style="width:100%;max-width:760px;background:#ffffff;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.4);padding:28px 32px;box-sizing:border-box;margin-bottom:18px;">');
+					html.push('<div style="font-size:11px;font-weight:700;color:#00a884;text-transform:uppercase;margin-bottom:10px;letter-spacing:0.5px;">Slide ' + (i + 1) + '</div>');
+					html.push('<h3 style="font-size:17px;font-weight:700;margin:0 0 10px;color:#111b21;">' + lines[0] + '</h3>');
+					for (var l = 1; l < lines.length; l++) {
+						html.push('<p style="font-size:13px;color:#3b4a54;margin:5px 0;line-height:1.5;">• ' + lines[l] + '</p>');
+					}
+					html.push('</div>');
+				}
+			}
+			html.push('</div>');
+			return html.length > 2 ? html.join('') : '';
 		}
 
 		function parseDocxToHtml(xmlStr) {
@@ -615,10 +660,12 @@ func getInitScript(ua string) string {
 			var isPdf = ext === 'pdf';
 			var isExcel = ext === 'xlsx' || ext === 'xls' || ext === 'csv';
 			var isWord = ext === 'docx' || ext === 'doc' || ext === 'rtf' || ext === 'txt';
+			var isPpt = ext === 'pptx' || ext === 'ppt';
 
 			// WKWebView has no reliable built-in renderer for PDF blob URLs.
 			// On macOS, render the already-saved file with PDFKit instead.
 			if (isPdf && savedPath && window.showPDFPreviewNative) {
+				if (window.dismissStuckViewer) window.dismissStuckViewer();
 				window.showPDFPreviewNative(savedPath);
 				if (ownedBlobUrl) {
 					try { URL.revokeObjectURL(ownedBlobUrl); } catch (e) {}
@@ -628,8 +675,12 @@ func getInitScript(ua string) string {
 
 			var docIcon = '📄';
 			var openBtnText = '📂 Open in System App';
-			var docTypeLabel = 'PDF Document';
-			if (isExcel) {
+			var docTypeLabel = 'Document';
+			if (isPdf) {
+				docIcon = '📄';
+				openBtnText = '📂 Open in System App';
+				docTypeLabel = 'PDF Document';
+			} else if (isExcel) {
 				docIcon = '📊';
 				openBtnText = '📊 Open in Excel / Numbers';
 				docTypeLabel = 'Excel Spreadsheet';
@@ -637,6 +688,10 @@ func getInitScript(ua string) string {
 				docIcon = '📝';
 				openBtnText = '📝 Open in Word / Pages';
 				docTypeLabel = 'Word Document';
+			} else if (isPpt) {
+				docIcon = '📽️';
+				openBtnText = '📽️ Open in PowerPoint / Keynote';
+				docTypeLabel = 'PowerPoint Presentation';
 			}
 
 			var overlay = document.createElement('div');
@@ -661,7 +716,10 @@ func getInitScript(ua string) string {
 				'  <button id="wa-btn-open-preview" style="background:#00a884;color:#111b21;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:4px;box-shadow:0 2px 6px rgba(0,168,132,0.3);">' +
 				'    ' + openBtnText +
 				'  </button>' +
-				'  <button id="wa-btn-save-doc" style="background:#2a3942;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:6px 14px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">' +
+				'  <button id="wa-btn-folder-doc" style="background:#2a3942;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">' +
+				'    📂 Show in Folder' +
+				'  </button>' +
+				'  <button id="wa-btn-save-doc" style="background:#2a3942;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">' +
 				'    💾 Download' +
 				'  </button>' +
 				'  <button id="wa-btn-close-doc" style="background:transparent;border:none;color:#8696a0;cursor:pointer;font-size:20px;padding:4px 8px;border-radius:6px;line-height:1;">✕</button>' +
@@ -684,62 +742,51 @@ func getInitScript(ua string) string {
 			}
 
 			function renderCardFallback(hint) {
+				var displayPath = savedPath || 'Downloads folder';
 				body.innerHTML = '' +
 					'<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center;">' +
 					'  <div style="font-size:64px;margin-bottom:16px;">' + docIcon + '</div>' +
-					'  <h2 style="color:#e9edef;font-size:17px;font-weight:600;margin:0 0 8px;">' + filename + '</h2>' +
-					'  <p style="color:#8696a0;font-size:12.5px;max-width:420px;line-height:1.5;margin:0 0 24px;">' +
-					(hint || ('The ' + docTypeLabel + ' file is saved on your computer. Click the button below to open it.')) +
+					'  <h2 style="color:#e9edef;font-size:18px;font-weight:600;margin:0 0 8px;max-width:540px;word-break:break-all;">' + filename + '</h2>' +
+					'  <div style="color:#00a884;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">' + docTypeLabel + ' · Saved</div>' +
+					'  <p style="color:#8696a0;font-size:13px;max-width:460px;line-height:1.5;margin:0 0 16px;">' +
+					(hint || ('The ' + docTypeLabel + ' is saved on your computer. Click below to open it in your default application.')) +
 					'  </p>' +
-					'  <button id="wa-btn-card-launch" style="background:#00a884;color:#111b21;border:none;padding:10px 24px;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,168,132,0.3);">' +
+					'  <div style="font-family:monospace;font-size:11px;color:#8696a0;background:rgba(255,255,255,0.06);padding:6px 14px;border-radius:6px;max-width:520px;overflow:hidden;text-overflow:ellipsis;margin-bottom:24px;border:1px solid rgba(255,255,255,0.08);">' + displayPath + '</div>' +
+					'  <div style="display:flex;gap:12px;align-items:center;">' +
+					'    <button id="wa-btn-card-launch" style="background:#00a884;color:#111b21;border:none;padding:10px 24px;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(0,168,132,0.3);">' +
 					openBtnText +
-					'  </button>' +
+					'    </button>' +
+					'    <button id="wa-btn-card-folder" style="background:#2a3942;color:#e9edef;border:1px solid rgba(255,255,255,0.1);padding:10px 20px;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;">' +
+					'📂 Show in Folder' +
+					'    </button>' +
+					'  </div>' +
 					'</div>';
 				var cardBtn = document.getElementById('wa-btn-card-launch');
 				if (cardBtn) cardBtn.onclick = triggerOpenSystem;
+				var folderBtn = document.getElementById('wa-btn-card-folder');
+				if (folderBtn) folderBtn.onclick = function() {
+					if (window.openDownloadDirNative) window.openDownloadDirNative();
+				};
 			}
 
 			// Render content according to file type
 			if (isPdf) {
 				var pdfSrc = ownedBlobUrl || blobUrl || '';
-				if ((!pdfSrc || pdfSrc.indexOf('blob:') !== 0) && dataUri && dataUri.indexOf('data:application/pdf') === 0) {
-					try {
-						var rawB64 = dataUri.split(',')[1] || '';
-						var binStr = atob(rawB64);
-						var len = binStr.length;
-						var u8 = new Uint8Array(len);
-						for (var bi = 0; bi < len; bi++) {
-							u8[bi] = binStr.charCodeAt(bi);
-						}
-						var pBlob = new Blob([u8], { type: 'application/pdf' });
-						pdfSrc = URL.createObjectURL(pBlob);
-						if (!ownedBlobUrl) ownedBlobUrl = pdfSrc;
-					} catch (e) {
-						pdfSrc = dataUri;
-					}
+				if ((!pdfSrc || pdfSrc.indexOf('blob:') !== 0) && dataUri && dataUri.indexOf(';base64,') !== -1) {
+					pdfSrc = 'data:application/pdf;base64,' + dataUri.split(';base64,')[1];
 				}
-				if (!pdfSrc) pdfSrc = dataUri || '';
-
 				if (pdfSrc) {
-					var obj = document.createElement('object');
-					obj.data = pdfSrc;
-					obj.type = 'application/pdf';
-					obj.style.cssText = 'width:100%;height:100%;border:none;flex:1;';
-
-					var ifr = document.createElement('iframe');
-					ifr.src = pdfSrc;
-					ifr.style.cssText = 'width:100%;height:100%;border:none;background:#ffffff;';
-					ifr.title = filename;
-
-					obj.appendChild(ifr);
-					body.appendChild(obj);
+					body.innerHTML = '<iframe src="' + pdfSrc + '" style="width:100%;height:100%;border:none;background:#525659;" title="' + filename + '"></iframe>';
 				} else {
 					renderCardFallback();
 				}
 			} else if (ext === 'csv') {
 				try {
-					var rawBase64 = (dataUri || '').split(',')[1] || '';
-					var csvText = atob(rawBase64);
+					var rawBase64 = (dataUri || '').indexOf(';base64,') !== -1 ? (dataUri || '').split(';base64,')[1] : (dataUri || '');
+					var binStr = atob(rawBase64);
+					var bytes = new Uint8Array(binStr.length);
+					for (var bi = 0; bi < binStr.length; bi++) bytes[bi] = binStr.charCodeAt(bi);
+					var csvText = new TextDecoder('utf-8').decode(bytes);
 					body.innerHTML = parseCsvToHtml(csvText);
 				} catch (e) {
 					renderCardFallback();
@@ -748,14 +795,14 @@ func getInitScript(ua string) string {
 				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Loading Excel preview...</div>';
 				var uint8 = base64ToUint8Array(dataUri || '');
 				if (uint8) {
-					Promise.all([
+					var parsePromise = Promise.all([
 						readZipEntryText(uint8, 'xl/worksheets/sheet1.xml'),
 						readZipEntryText(uint8, 'xl/sharedStrings.xml')
-					]).then(function(res) {
-						var sheetXml = res[0];
-						var stringsXml = res[1];
-						if (sheetXml) {
-							body.innerHTML = parseXlsxToHtml(sheetXml, stringsXml);
+					]);
+					var timeoutPromise = new Promise(function(resolve) { setTimeout(function() { resolve(null); }, 2000); });
+					Promise.race([parsePromise, timeoutPromise]).then(function(res) {
+						if (res && res[0]) {
+							body.innerHTML = parseXlsxToHtml(res[0], res[1]);
 						} else {
 							renderCardFallback();
 						}
@@ -765,11 +812,15 @@ func getInitScript(ua string) string {
 				} else {
 					renderCardFallback();
 				}
+			} else if (ext === 'xls') {
+				renderCardFallback('Excel 97-2003 Workbook (.xls). Click below to open in your default spreadsheet application.');
 			} else if (ext === 'docx') {
 				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Loading Word preview...</div>';
 				var uint8Doc = base64ToUint8Array(dataUri || '');
 				if (uint8Doc) {
-					readZipEntryText(uint8Doc, 'word/document.xml').then(function(docXml) {
+					var parsePromiseDoc = readZipEntryText(uint8Doc, 'word/document.xml');
+					var timeoutPromiseDoc = new Promise(function(resolve) { setTimeout(function() { resolve(null); }, 1500); });
+					Promise.race([parsePromiseDoc, timeoutPromiseDoc]).then(function(docXml) {
 						if (docXml) {
 							var docHtml = parseDocxToHtml(docXml);
 							body.innerHTML = '' +
@@ -787,11 +838,44 @@ func getInitScript(ua string) string {
 				} else {
 					renderCardFallback();
 				}
-			} else if (ext === 'txt') {
+			} else if (ext === 'doc') {
+				renderCardFallback('Word 97-2003 Document (.doc). Click below to open in Microsoft Word or default application.');
+			} else if (ext === 'pptx') {
+				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Loading PowerPoint preview...</div>';
+				var uint8Ppt = base64ToUint8Array(dataUri || '');
+				if (uint8Ppt) {
+					var parsePromisePpt = Promise.all([
+						readZipEntryText(uint8Ppt, 'ppt/slides/slide1.xml'),
+						readZipEntryText(uint8Ppt, 'ppt/slides/slide2.xml'),
+						readZipEntryText(uint8Ppt, 'ppt/slides/slide3.xml'),
+						readZipEntryText(uint8Ppt, 'ppt/slides/slide4.xml'),
+						readZipEntryText(uint8Ppt, 'ppt/slides/slide5.xml')
+					]);
+					var timeoutPromisePpt = new Promise(function(resolve) { setTimeout(function() { resolve(null); }, 1500); });
+					Promise.race([parsePromisePpt, timeoutPromisePpt]).then(function(slides) {
+						var validSlides = slides ? slides.filter(Boolean) : [];
+						if (validSlides.length) {
+							body.innerHTML = parsePptxToHtml(validSlides);
+						} else {
+							renderCardFallback();
+						}
+					}).catch(function() {
+						renderCardFallback();
+					});
+				} else {
+					renderCardFallback();
+				}
+			} else if (ext === 'ppt') {
+				renderCardFallback('PowerPoint 97-2003 Presentation (.ppt). Click below to open in PowerPoint or default application.');
+			} else if (ext === 'txt' || ext === 'rtf' || ext === 'log') {
 				try {
-					var rawTxt = atob((dataUri || '').split(',')[1] || '');
+					var rawTxtB64 = (dataUri || '').indexOf(';base64,') !== -1 ? (dataUri || '').split(';base64,')[1] : (dataUri || '');
+					var binTxt = atob(rawTxtB64);
+					var bytesTxt = new Uint8Array(binTxt.length);
+					for (var ti = 0; ti < binTxt.length; ti++) bytesTxt[ti] = binTxt.charCodeAt(ti);
+					var textContent = new TextDecoder('utf-8').decode(bytesTxt);
 					body.innerHTML = '<div style="width:100%;height:100%;overflow:auto;padding:24px;box-sizing:border-box;background:#111b21;color:#e9edef;font-family:monospace;font-size:13px;line-height:1.6;white-space:pre-wrap;">' +
-						rawTxt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+						textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') +
 						'</div>';
 				} catch (e) {
 					renderCardFallback();
@@ -804,6 +888,7 @@ func getInitScript(ua string) string {
 			document.body.appendChild(overlay);
 
 			function closeDocModal() {
+				window.removeEventListener('keydown', onEsc);
 				if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
 				if (ownedBlobUrl) {
 					try { URL.revokeObjectURL(ownedBlobUrl); } catch (e) {}
@@ -820,6 +905,13 @@ func getInitScript(ua string) string {
 
 			document.getElementById('wa-btn-open-preview').onclick = triggerOpenSystem;
 
+			var btnFolder = document.getElementById('wa-btn-folder-doc');
+			if (btnFolder) {
+				btnFolder.onclick = function() {
+					if (window.openDownloadDirNative) window.openDownloadDirNative();
+				};
+			}
+
 			document.getElementById('wa-btn-save-doc').onclick = function() {
 				if (dataUri && window.saveDownloadedFileNative) {
 					window.saveDownloadedFileNative(filename, dataUri).then(function(p) {
@@ -831,9 +923,8 @@ func getInitScript(ua string) string {
 			};
 
 			var onEsc = function(e) {
-				if (e.key === 'Escape' && e.isTrusted) {
+				if (e.key === 'Escape' && e.isTrusted && !e._waViewerDismiss) {
 					closeDocModal();
-					window.removeEventListener('keydown', onEsc);
 				}
 			};
 			window.addEventListener('keydown', onEsc);
