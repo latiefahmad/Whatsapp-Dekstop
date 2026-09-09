@@ -19,7 +19,7 @@ Ready-to-use binaries and installers are available directly from the official re
 | **macOS (DMG)** | [📥 **Download WhatsApp-Desk-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg) | Universal (Apple Silicon & Intel) | Apple Disk Image (.dmg) | ~6.5 MB |
 | **macOS (ZIP)** | [📥 **Download WhatsApp-Desk-macOS-Universal.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.zip) | Universal (Apple Silicon & Intel) | Portable App (.zip) | ~5.6 MB |
 | **Windows (ZIP)** | [📥 **Download WhatsApp-Desk-Windows-x64.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64.zip) | 64-bit (x64) | Complete Portable Bundle (.zip) | ~6.9 MB |
-| **Windows (EXE)** | [📥 **Download WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe) | 64-bit (x64) | Standalone Executable (.exe) | ~8.5 MB |
+| **Windows (EXE)** | [📥 **Download WhatsAppDesk.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsAppDesk.exe) | 64-bit (x64) | Standalone Executable (.exe) | ~8.5 MB |
 | **Linux (DEB)** | [📥 **Download WhatsApp-Desk-Linux-amd64.deb**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-amd64.deb) | 64-bit (x86_64) | Debian / Ubuntu Package (.deb) | ~2.2 MB |
 | **Linux (Tarball)** | [📥 **Download WhatsApp-Desk-Linux-x64.tar.gz**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-x64.tar.gz) | 64-bit (x86_64) | Portable Tarball (.tar.gz) | ~2.8 MB |
 
@@ -68,7 +68,7 @@ Ready-to-use binaries and installers are available directly from the official re
 - **Windows Toast Notification Focus**: Clicking a native Windows toast notification instantly brings the WhatsApp window to the foreground.
 - **Dark Mode Title Bar**: Seamless Win32 Desktop Window Manager (DWM) integration providing a native dark window frame matching WhatsApp Web.
 - **Isolated User Data Profile**: Session data is stored in `%APPDATA%\WhatsAppDesk\UserData\`.
-- **Fully Portable**: Available as a standalone executable (`WhatsApp.exe`) and portable zip archive (`WhatsApp-Desk-Windows-x64.zip`).
+- **Fully Portable**: Available as a standalone executable (`WhatsAppDesk.exe`) and portable zip archive (`WhatsApp-Desk-Windows-x64.zip`).
 
 ### macOS System Integration
 - **Apple WebKit (Cocoa) & PDFKit**: Native WKWebView with Cocoa PDFKit integration for high-speed document rendering.
@@ -122,10 +122,10 @@ Choose either simple method below to launch the app:
 ### 🪟 Windows Installation
 
 #### Steps:
-1. Download [**WhatsApp.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp.exe) or [**WhatsApp-Desk-Windows-x64.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64.zip).
+1. Download [**WhatsAppDesk.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsAppDesk.exe) or [**WhatsApp-Desk-Windows-x64.zip**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64.zip).
 2. Place the file in your preferred folder (e.g., `C:\Apps\WhatsAppDesk` or Desktop).
 3. Create a shortcut to your Desktop or Start Menu if desired.
-4. Double-click `WhatsApp.exe` to run (portable, no installer needed).
+4. Double-click `WhatsAppDesk.exe` to run (portable, no installer needed).
 
 #### ⚠️ Bypassing Windows SmartScreen (*"Windows protected your PC"*):
 1. When the blue SmartScreen prompt appears, click **"More info"**.
