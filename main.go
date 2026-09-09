@@ -1376,11 +1376,18 @@ func getInitScript(ua string) string {
 					delete activeDownloadKeys[requestKey];
 					return;
 				}
-				// Keep a short completion window because WhatsApp can dispatch the same
-				// click through more than one document/download observer.
+				delete activeDownloadKeys[requestKey];
+			}
+
+			function markDownloadComplete(requestKey, savedPath) {
+				var completedRequest = { status: 'complete', savedPath: savedPath };
+				activeDownloadKeys[requestKey] = completedRequest;
+				// Retain only the tiny path entry, never the Blob or base64 payload.
 				setTimeout(function() {
-					delete activeDownloadKeys[requestKey];
-				}, 30000);
+					if (activeDownloadKeys[requestKey] === completedRequest) {
+						delete activeDownloadKeys[requestKey];
+					}
+				}, 300000);
 			}
 
 			function isDocumentFileName(name) {
@@ -1394,15 +1401,26 @@ func getInitScript(ua string) string {
 
 			function captureDownload(href, filename, shouldAutoOpen) {
 				if (!filename) filename = 'whatsapp_file';
-				var requestKey = downloadRequestKey(href, filename);
-				if (activeDownloadKeys[requestKey]) {
-					return;
-				}
-				activeDownloadKeys[requestKey] = true;
 				var isDoc = isDocumentFileName(filename);
 				if (shouldAutoOpen === undefined) {
 					shouldAutoOpen = isDoc;
 				}
+				var requestKey = downloadRequestKey(href, filename);
+				var existingRequest = activeDownloadKeys[requestKey];
+				if (existingRequest && existingRequest.status === 'complete') {
+					if (shouldAutoOpen) {
+						showInAppDocModal(filename, href, existingRequest.savedPath, '', '');
+						if (window.dismissStuckViewer) window.dismissStuckViewer();
+						showFloatingToast('📄 Preview opened: ' + filename);
+					} else {
+						showFloatingToast('💾 File already saved: ' + filename);
+					}
+					return;
+				}
+				if (existingRequest && existingRequest.status === 'downloading') {
+					return;
+				}
+				activeDownloadKeys[requestKey] = { status: 'downloading' };
 				showFloatingToast(isDoc ? ('📄 Opening preview: ' + filename + '...') : ('⏳ Downloading: ' + filename + '...'));
 
 				fetch(href)
@@ -1430,7 +1448,11 @@ func getInitScript(ua string) string {
 										if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
 										showFloatingToast('❌ Failed to save file.');
 									}
-									releaseDownloadRequest(requestKey, !savedPath);
+									if (savedPath) {
+										markDownloadComplete(requestKey, savedPath);
+									} else {
+										releaseDownloadRequest(requestKey, true);
+									}
 								}).catch(function() {
 									if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
 									showFloatingToast('❌ Error saving file.');
