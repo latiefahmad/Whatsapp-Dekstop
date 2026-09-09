@@ -1681,69 +1681,44 @@ func getInitScript(ua string) string {
 			var isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 			var currentTheme = 'dark';
 			var themeObserver = null;
-
-			// --- Override window.matchMedia for prefers-color-scheme ---
-			var origMatchMedia = window.matchMedia;
-			if (origMatchMedia) {
-				window.matchMedia = function(query) {
-					var res = origMatchMedia.apply(this, arguments);
-					if (query && query.indexOf('prefers-color-scheme') >= 0) {
-						var isDarkQuery = query.indexOf('dark') >= 0;
-						var forcedMatches = isDarkQuery;
-						if (currentTheme === 'light') {
-							forcedMatches = !isDarkQuery;
-						} else if (currentTheme === 'dark') {
-							forcedMatches = isDarkQuery;
-						} else {
-							forcedMatches = res.matches;
-						}
-
-						return {
-							matches: forcedMatches,
-							media: query,
-							addEventListener: function(t, fn) { res.addEventListener ? res.addEventListener(t, fn) : (res.addListener && res.addListener(fn)); },
-							removeEventListener: function(t, fn) { res.removeEventListener ? res.removeEventListener(t, fn) : (res.removeListener && res.removeListener(fn)); },
-							addListener: function(fn) { if (res.addListener) res.addListener(fn); },
-							removeListener: function(fn) { if (res.removeListener) res.removeListener(fn); },
-							onchange: null
-						};
-					}
-					return res;
-				};
-			}
+			var themeChoiceVersion = 0;
+			var themeLoadStarted = false;
+			var themeReloadTimer = null;
+			// Keep the engine's native MediaQueryList intact. Replacing matchMedia with
+			// a partial object breaks framework listeners on some WebView2/WebKitGTK
+			// versions and was the main cross-platform difference in theme switching.
+			var origMatchMedia = window.matchMedia ? window.matchMedia.bind(window) : null;
 
 			// --- Theme Management ---
 			function getSystemIsDark() {
 				if (origMatchMedia) {
-					return origMatchMedia.call(window, '(prefers-color-scheme: dark)').matches;
+					return origMatchMedia('(prefers-color-scheme: dark)').matches;
 				}
 				return true;
+			}
+
+			function applyThemeClasses(isDark) {
+				var mode = isDark ? 'dark' : 'light';
+				var opposite = isDark ? 'light' : 'dark';
+				var root = document.documentElement;
+				root.classList.add(mode);
+				root.classList.remove(opposite);
+				root.setAttribute('data-theme', mode);
+				root.style.colorScheme = mode;
+				if (document.body) {
+					document.body.classList.add(mode);
+					document.body.classList.remove(opposite);
+					document.body.setAttribute('data-theme', mode);
+					document.body.style.colorScheme = mode;
+				}
 			}
 
 			function applyThemeToDOM(theme) {
 				currentTheme = theme;
 				var isDark = (theme === 'system') ? getSystemIsDark() : (theme === 'dark');
 
-				// 1. Update documentElement & body classes
-				if (isDark) {
-					document.documentElement.classList.add('dark');
-					document.documentElement.classList.remove('light');
-					if (document.body) {
-						document.body.classList.add('dark');
-						document.body.classList.remove('light');
-					}
-					document.documentElement.setAttribute('data-theme', 'dark');
-					document.documentElement.style.colorScheme = 'dark';
-				} else {
-					document.documentElement.classList.remove('dark');
-					document.documentElement.classList.add('light');
-					if (document.body) {
-						document.body.classList.remove('dark');
-						document.body.classList.add('light');
-					}
-					document.documentElement.setAttribute('data-theme', 'light');
-					document.documentElement.style.colorScheme = 'light';
-				}
+				// 1. Update the document immediately for our controls and current page.
+				applyThemeClasses(isDark);
 
 				// 2. Synchronize WhatsApp Web's own localStorage keys
 				try {
@@ -1751,16 +1726,6 @@ func getInitScript(ua string) string {
 					var themeVal = JSON.stringify(theme === 'system' ? (isDark ? 'dark' : 'light') : theme);
 					localStorage.setItem('system-theme-mode', themeModeVal);
 					localStorage.setItem('theme', themeVal);
-					// A plain localStorage.setItem() never fires a 'storage' DOM event in the
-					// SAME window/document that made the change (only other tabs get notified).
-					// WhatsApp Web's own already-running scripts may rely on that event to react
-					// to theme changes, so dispatch a synthetic one to keep them in sync too.
-					if (window.StorageEvent) {
-						try {
-							window.dispatchEvent(new StorageEvent('storage', { key: 'theme', newValue: themeVal, storageArea: localStorage }));
-							window.dispatchEvent(new StorageEvent('storage', { key: 'system-theme-mode', newValue: themeModeVal, storageArea: localStorage }));
-						} catch (e2) {}
-					}
 				} catch(e) {}
 
 				// 3. Update modal and toolbar button if visible
@@ -1777,11 +1742,7 @@ func getInitScript(ua string) string {
 						themeObserver = new MutationObserver(function() {
 							if (shouldPauseBackgroundWork()) return;
 							var shouldBeDark = (currentTheme === 'system') ? getSystemIsDark() : (currentTheme === 'dark');
-							if (shouldBeDark && !document.body.classList.contains('dark')) {
-								document.body.classList.add('dark');
-							} else if (!shouldBeDark && document.body.classList.contains('dark')) {
-								document.body.classList.remove('dark');
-							}
+							applyThemeClasses(shouldBeDark);
 						});
 					}
 					themeObserver.disconnect();
@@ -1797,11 +1758,19 @@ func getInitScript(ua string) string {
 				if (theme !== 'dark' && theme !== 'light' && theme !== 'system') {
 					theme = 'dark';
 				}
+				themeChoiceVersion++;
 				applyThemeToDOM(theme);
 				if (window.setAppThemeNative) {
-					window.setAppThemeNative(theme);
+					Promise.resolve(window.setAppThemeNative(theme)).catch(function() {});
 				}
-				showFloatingToast(theme === 'dark' ? '🌙 Theme: Dark Mode' : (theme === 'light' ? '☀️ Theme: Light Mode' : '💻 Theme: Follow System'));
+				showFloatingToast(theme === 'dark' ? 'Theme: Dark' : (theme === 'light' ? 'Theme: Light' : 'Theme: System'));
+				// WhatsApp keeps theme state inside its running application tree. Reload
+				// once after persisting the choice so every engine starts from the same
+				// localStorage state instead of leaving part of the UI in the old theme.
+				clearTimeout(themeReloadTimer);
+				themeReloadTimer = setTimeout(function() {
+					window.location.reload();
+				}, 300);
 			};
 
 			// Listen for system appearance changes
@@ -1821,23 +1790,21 @@ func getInitScript(ua string) string {
 
 			// Load saved theme from native settings and keep synced
 			function initTheme() {
-				if (window.getAppThemeNative) {
-					window.getAppThemeNative().then(function(savedTheme) {
-						if (savedTheme) {
-							applyThemeToDOM(savedTheme);
-						}
-					});
-				}
+				if (themeLoadStarted || !window.getAppThemeNative) return;
+				themeLoadStarted = true;
+				var requestVersion = themeChoiceVersion;
+				window.getAppThemeNative().then(function(savedTheme) {
+					if (requestVersion !== themeChoiceVersion) return;
+					if (savedTheme) applyThemeToDOM(savedTheme);
+				}).catch(function() {
+					themeLoadStarted = false;
+				});
 			}
 			initTheme();
-			document.addEventListener('DOMContentLoaded', initTheme);
-			window.addEventListener('load', initTheme);
-			setInterval(function() {
-				if (shouldPauseBackgroundWork()) return;
-				if (document.body && !themeObserver) {
-					applyThemeToDOM(currentTheme);
-				}
-			}, 2000);
+			document.addEventListener('DOMContentLoaded', function() {
+				initTheme();
+				applyThemeToDOM(currentTheme);
+			}, { once: true });
 
 			// --- In-Flow Header Toolbar Button (Non-Floating, Clean WhatsApp Style) ---
 			function injectHeaderToolbarBtn() {
