@@ -164,33 +164,51 @@ func getInitScript(ua string) string {
 				return res;
 			};
 
-			// Automatically prepare all video/audio elements injected into DOM.
-			// Chat-list scrolling can trigger very frequent DOM churn (virtualized rows
-			// being recycled), so instead of walking every individual mutation record as
-			// it arrives, coalesce all pending mutations into a single lightweight scan
-			// per animation frame. prepareMedia() is idempotent (guarded by
-			// __wa_media_ready), so batching this way never misses an element.
+			// Automatically prepare video/audio elements injected into DOM. WhatsApp's
+			// virtualized chat list mutates frequently, so queue only newly-added
+			// subtrees and process them once per animation frame. Rescanning the entire
+			// document on every busy frame makes scrolling unnecessarily expensive.
 			if (window.MutationObserver) {
 				var mediaScanScheduled = false;
+				var pendingMediaRoots = [];
+				function queueMediaRoot(node) {
+					if (node && node.nodeType === 1) pendingMediaRoots.push(node);
+				}
 				function scanForUnpreparedMedia() {
 					mediaScanScheduled = false;
+					var roots = pendingMediaRoots.splice(0, pendingMediaRoots.length);
 					if (shouldPauseBackgroundWork()) return;
-					var root = document.body || document.documentElement;
-					if (!root || !root.querySelectorAll) return;
-					var list = root.querySelectorAll('video, audio');
-					for (var l = 0; l < list.length; l++) prepareMedia(list[l]);
+					for (var r = 0; r < roots.length; r++) {
+						var root = roots[r];
+						if (root.matches && root.matches('video, audio')) prepareMedia(root);
+						if (!root.querySelectorAll) continue;
+						var list = root.querySelectorAll('video, audio');
+						for (var l = 0; l < list.length; l++) prepareMedia(list[l]);
+					}
 				}
-				var mediaObserver = new MutationObserver(function() {
-					if (shouldPauseBackgroundWork() || mediaScanScheduled) return;
+				function scheduleMediaScan() {
+					if (mediaScanScheduled || pendingMediaRoots.length === 0) return;
 					mediaScanScheduled = true;
 					requestAnimationFrame(scanForUnpreparedMedia);
+				}
+				var mediaObserver = new MutationObserver(function(mutations) {
+					if (shouldPauseBackgroundWork()) return;
+					for (var m = 0; m < mutations.length; m++) {
+						var added = mutations[m].addedNodes;
+						for (var n = 0; n < added.length; n++) queueMediaRoot(added[n]);
+					}
+					scheduleMediaScan();
 				});
 				var targetNode = document.documentElement || document.body;
 				if (targetNode) {
 					mediaObserver.observe(targetNode, { childList: true, subtree: true });
+					queueMediaRoot(targetNode);
+					scheduleMediaScan();
 				} else {
 					document.addEventListener('DOMContentLoaded', function() {
 						mediaObserver.observe(document.body, { childList: true, subtree: true });
+						queueMediaRoot(document.body);
+						scheduleMediaScan();
 					});
 				}
 			}
