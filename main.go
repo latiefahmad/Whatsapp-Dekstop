@@ -1343,7 +1343,7 @@ func getInitScript(ua string) string {
 						if (res && res.available) {
 							window.showUpdateBanner(res.latest_version, res.release_title, res.download_url);
 						} else {
-							var cur = (res && res.current_version) ? res.current_version : '1.5.5';
+							var cur = (res && res.current_version) ? res.current_version : '1.5.6';
 							showFloatingToast('✅ WhatsApp Desk is up to date (v' + cur + ')');
 						}
 						return res;
@@ -1895,7 +1895,7 @@ func getInitScript(ua string) string {
 					'  </div>' +
 					'  <div>' +
 					'    <h3 id="wa-modal-title" style="margin:0;font-size:15px;font-weight:600;">WhatsApp Desk</h3>' +
-					'    <span id="wa-modal-sub" style="font-size:11px;">Application settings · version 1.5.5</span>' +
+					'    <span id="wa-modal-sub" style="font-size:11px;">Application settings · version 1.5.6</span>' +
 					'  </div>' +
 					'</div>' +
 					'<button id="wa-settings-close-x" style="background:transparent;border:none;cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;">✕</button>';

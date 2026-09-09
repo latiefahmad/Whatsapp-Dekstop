@@ -20,13 +20,15 @@ The screenshots use blurred chat content to protect personal information.
 
 ## Download
 
-Current release: **v1.5.5**
+Current release: **v1.5.6**
 
 | Platform | Download |
 | --- | --- |
 | macOS, Apple Silicon and Intel | [DMG](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg) · [ZIP](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.zip) |
 | Windows 10/11 x64 | [EXE](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsAppDesk.exe) · [ZIP](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64.zip) |
 | Debian/Ubuntu x64 | [DEB](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-amd64.deb) · [tar.gz](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-x64.tar.gz) |
+| Debian/Ubuntu arm64 | [DEB](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-arm64.deb) · [tar.gz](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-arm64.tar.gz) |
+| Fedora/RHEL x64 | [RPM](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-x64.rpm) |
 
 ## Main features
 
@@ -87,14 +89,15 @@ Default profile locations:
 - Windows: `%APPDATA%\WhatsAppDesk\UserData\`
 - Linux: `~/.config/whatsapp-desk/`
 
-## Version 1.5.5
+## Version 1.5.6
 
+- Silent background update on Windows: no console window flashes during self-update.
+- Opening downloads and previewed files no longer flashes a console window.
+- First official Fedora packages (RPM) alongside Debian, Ubuntu, and portable tarballs.
 - Reliable document preview and close-to-chat behavior.
-- Cached preview reopening without duplicate downloads.
 - Reliable Light, Dark, and System appearance switching.
 - Lower background DOM work and more conservative media buffering.
 - Improved memory lifecycle on macOS, Windows, and Linux.
-- Working settings, download-folder controls, and update checks.
 
 Older releases are retained for reference but are deprecated.
 
