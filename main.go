@@ -1253,6 +1253,10 @@ func getInitScript(ua string) string {
 				} catch (e) {}
 
 				btnUpdate.onclick = function() {
+					if (!downloadUrl && window.triggerCheckForUpdate) {
+						window.triggerCheckForUpdate();
+						return;
+					}
 					actionsDiv.style.display = 'none';
 					progressWrap.style.display = 'flex';
 					msg.textContent = 'Downloading update package...';
@@ -1284,8 +1288,10 @@ func getInitScript(ua string) string {
 			window.onUpdateError = function(errMsg) {
 				var actions = document.getElementById('wa-update-actions');
 				var prog = document.getElementById('wa-update-progress-wrap');
+				var msg = document.getElementById('wa-update-text');
 				if (actions) actions.style.display = 'flex';
 				if (prog) prog.style.display = 'none';
+				if (msg) msg.textContent = 'Update available';
 				showFloatingToast('❌ Failed to update: ' + errMsg);
 			};
 
@@ -1346,6 +1352,209 @@ func getInitScript(ua string) string {
 			document.addEventListener('DOMContentLoaded', injectResponsive);
 			window.addEventListener('load', injectResponsive);
 			respTimer = setInterval(injectResponsive, 2500);
+		})();
+
+		// Resizable chat-list divider for desktop layouts.
+		(function() {
+			if (window.__waResizableSplitInstalled) return;
+			window.__waResizableSplitInstalled = true;
+
+			var storageKey = 'whatsapp-desk-chat-list-width-v1';
+			var divider = null;
+			var side = null;
+			var mainPane = null;
+			var dragging = false;
+			var pendingX = null;
+			var frame = 0;
+
+			function limits() {
+				var viewport = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+				return {
+					min: Math.min(260, Math.max(180, Math.floor(viewport * 0.34))),
+					max: Math.max(180, Math.min(560, viewport - 300)),
+					viewport: viewport
+				};
+			}
+
+			function clampWidth(value) {
+				var range = limits();
+				return Math.max(range.min, Math.min(range.max, Math.round(value)));
+			}
+
+			function storedWidth() {
+				var value = Number(localStorage.getItem(storageKey));
+				return Number.isFinite(value) && value > 0 ? value : 0;
+			}
+
+			function setWidth(value, persist) {
+				if (!side || !mainPane) return;
+				var width = clampWidth(value);
+				side.style.setProperty('width', width + 'px', 'important');
+				side.style.setProperty('min-width', width + 'px', 'important');
+				side.style.setProperty('max-width', width + 'px', 'important');
+				side.style.setProperty('flex', '0 0 ' + width + 'px', 'important');
+				mainPane.style.setProperty('min-width', '0', 'important');
+				mainPane.style.setProperty('flex', '1 1 auto', 'important');
+				if (divider) divider.setAttribute('aria-valuenow', String(width));
+				if (persist) localStorage.setItem(storageKey, String(width));
+				positionDivider();
+			}
+
+			function clearWidth() {
+				if (!side) return;
+				['width', 'min-width', 'max-width', 'flex'].forEach(function(name) {
+					side.style.removeProperty(name);
+				});
+				if (mainPane) {
+					mainPane.style.removeProperty('min-width');
+					mainPane.style.removeProperty('flex');
+				}
+			}
+
+			function positionDivider() {
+				if (!divider || !side) return;
+				var range = limits();
+				if (range.viewport < 641 || !mainPane) {
+					divider.style.display = 'none';
+					clearWidth();
+					return;
+				}
+				var rect = side.getBoundingClientRect();
+				if (rect.width < 1 || rect.height < 1) {
+					divider.style.display = 'none';
+					return;
+				}
+				divider.style.display = 'block';
+				divider.style.left = Math.round(rect.right - 3) + 'px';
+				divider.style.top = Math.round(rect.top) + 'px';
+				divider.style.height = Math.round(rect.height) + 'px';
+				divider.setAttribute('aria-valuemin', String(range.min));
+				divider.setAttribute('aria-valuemax', String(range.max));
+			}
+
+			function findPanes() {
+				var nextSide = document.querySelector('#side');
+				var nextMain = document.querySelector('#main');
+				if (!nextSide || !nextMain) return false;
+				if (side !== nextSide || mainPane !== nextMain) {
+					side = nextSide;
+					mainPane = nextMain;
+					var initial = storedWidth() || side.getBoundingClientRect().width;
+					setWidth(initial, false);
+				}
+				return true;
+			}
+
+			function applyPointerX(clientX, persist) {
+				if (!side) return;
+				var sideRect = side.getBoundingClientRect();
+				setWidth(clientX - sideRect.left, persist);
+			}
+
+			function schedulePointerX(clientX) {
+				pendingX = clientX;
+				if (frame) return;
+				frame = requestAnimationFrame(function() {
+					frame = 0;
+					if (pendingX !== null) applyPointerX(pendingX, false);
+				});
+			}
+
+			function createDivider() {
+				if (divider || !document.body) return;
+				divider = document.createElement('div');
+				divider.id = 'whatsapp-desk-chat-divider';
+				divider.setAttribute('role', 'separator');
+				divider.setAttribute('aria-label', 'Resize chat list');
+				divider.setAttribute('aria-orientation', 'vertical');
+				divider.tabIndex = 0;
+				divider.style.cssText = 'position:fixed;width:6px;z-index:2147483000;cursor:col-resize;touch-action:none;background:transparent;outline:none;';
+
+				var line = document.createElement('span');
+				line.setAttribute('aria-hidden', 'true');
+				line.style.cssText = 'position:absolute;left:2px;top:0;bottom:0;width:1px;background:rgba(134,150,160,.45);transition:background-color 120ms ease,width 120ms ease;';
+				divider.appendChild(line);
+
+				function highlight(active) {
+					line.style.width = active ? '2px' : '1px';
+					line.style.backgroundColor = active ? '#00a884' : 'rgba(134,150,160,.45)';
+				}
+
+				divider.addEventListener('pointerenter', function() { highlight(true); });
+				divider.addEventListener('pointerleave', function() { if (!dragging) highlight(false); });
+				divider.addEventListener('focus', function() { highlight(true); });
+				divider.addEventListener('blur', function() { if (!dragging) highlight(false); });
+				divider.addEventListener('pointerdown', function(event) {
+					if (event.button !== 0 || !findPanes()) return;
+					dragging = true;
+					divider.setPointerCapture(event.pointerId);
+					document.documentElement.style.cursor = 'col-resize';
+					document.documentElement.style.userSelect = 'none';
+					highlight(true);
+					event.preventDefault();
+				});
+				divider.addEventListener('pointermove', function(event) {
+					if (dragging) schedulePointerX(event.clientX);
+				});
+				function finishDrag(event) {
+					if (!dragging) return;
+					dragging = false;
+					if (frame) { cancelAnimationFrame(frame); frame = 0; }
+					pendingX = null;
+					applyPointerX(event.clientX, true);
+					document.documentElement.style.removeProperty('cursor');
+					document.documentElement.style.removeProperty('user-select');
+					highlight(divider.matches(':hover, :focus'));
+				}
+				divider.addEventListener('pointerup', finishDrag);
+				divider.addEventListener('pointercancel', finishDrag);
+				divider.addEventListener('dblclick', function() {
+					localStorage.removeItem(storageKey);
+					if (side) setWidth(Math.round(limits().viewport * 0.32), false);
+				});
+				divider.addEventListener('keydown', function(event) {
+					if (!findPanes()) return;
+					var current = side.getBoundingClientRect().width;
+					var next = current;
+					if (event.key === 'ArrowLeft') next -= 16;
+					else if (event.key === 'ArrowRight') next += 16;
+					else if (event.key === 'Home') next = limits().min;
+					else if (event.key === 'End') next = limits().max;
+					else return;
+					setWidth(next, true);
+					event.preventDefault();
+				});
+
+				document.body.appendChild(divider);
+			}
+
+			function syncDivider() {
+				createDivider();
+				if (findPanes()) {
+					var remembered = storedWidth();
+					if (remembered) setWidth(remembered, false);
+					else positionDivider();
+				} else if (divider) {
+					divider.style.display = 'none';
+				}
+			}
+
+			var syncTimer = 0;
+			function scheduleSync() {
+				if (syncTimer) return;
+				syncTimer = window.setTimeout(function() {
+					syncTimer = 0;
+					syncDivider();
+				}, 120);
+			}
+
+			document.addEventListener('DOMContentLoaded', syncDivider);
+			window.addEventListener('load', syncDivider);
+			window.addEventListener('resize', scheduleSync);
+			if (window.MutationObserver) {
+				new MutationObserver(scheduleSync).observe(document.documentElement, { childList: true, subtree: true });
+			}
+			syncDivider();
 		})();
 
 		// Automatic Download & Document Preview Interceptor for Chat Files & Media
