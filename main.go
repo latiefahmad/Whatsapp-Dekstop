@@ -1343,7 +1343,7 @@ func getInitScript(ua string) string {
 						if (res && res.available) {
 							window.showUpdateBanner(res.latest_version, res.release_title, res.download_url);
 						} else {
-							var cur = (res && res.current_version) ? res.current_version : '1.5.6';
+							var cur = (res && res.current_version) ? res.current_version : '1.5.7';
 							showFloatingToast('✅ WhatsApp Desk is up to date (v' + cur + ')');
 						}
 						return res;
@@ -1402,17 +1402,19 @@ func getInitScript(ua string) string {
 				return String(filename || '') + '\n' + String(href || '');
 			}
 
+			// Same file arrives through different blob URLs depending on which
+			// path triggered it (bubble click, viewer download button, anchor
+			// intercept), so dedup by content length instead of the URL.
+			var activeDownloadSizes = {};
+
 			function releaseDownloadRequest(requestKey, immediately) {
-				if (immediately) {
-					delete activeDownloadKeys[requestKey];
-					return;
-				}
 				delete activeDownloadKeys[requestKey];
 			}
 
-			function markDownloadComplete(requestKey, savedPath) {
+			function markDownloadComplete(requestKey, savedPath, blobSize) {
 				var completedRequest = { status: 'complete', savedPath: savedPath };
 				activeDownloadKeys[requestKey] = completedRequest;
+				if (blobSize) activeDownloadSizes[blobSize] = savedPath;
 				// Retain only the tiny path entry, never the Blob or base64 payload.
 				setTimeout(function() {
 					if (activeDownloadKeys[requestKey] === completedRequest) {
@@ -1438,16 +1440,6 @@ func getInitScript(ua string) string {
 				}
 				var requestKey = downloadRequestKey(href, filename);
 				var existingRequest = activeDownloadKeys[requestKey];
-				if (existingRequest && existingRequest.status === 'complete') {
-					if (shouldAutoOpen) {
-						showInAppDocModal(filename, href, existingRequest.savedPath, '', '');
-						if (window.dismissStuckViewer) window.dismissStuckViewer();
-						showFloatingToast('📄 Preview opened: ' + filename);
-					} else {
-						showFloatingToast('💾 File already saved: ' + filename);
-					}
-					return;
-				}
 				if (existingRequest && existingRequest.status === 'downloading') {
 					return;
 				}
@@ -1459,6 +1451,22 @@ func getInitScript(ua string) string {
 						return response.blob();
 					})
 					.then(function(blob) {
+						// Content-level dedup: identical file via a different blob
+						// URL (second click, viewer button) was previously saved
+						// again as "name (1).ext". The Go saver also refuses
+						// byte-identical duplicates as a final backstop.
+						if (blob.size && activeDownloadSizes[blob.size]) {
+							var savedPath = activeDownloadSizes[blob.size];
+							showFloatingToast(shouldAutoOpen ? ('📄 Already saved: ' + filename) : ('💾 File already saved: ' + filename));
+							if (shouldAutoOpen) {
+								var isPdfDup = filename.toLowerCase().endsWith('.pdf');
+								var dupBlobUrl = isPdfDup ? origCreateObjectURL(blob.slice(0, blob.size, 'application/pdf')) : '';
+								showInAppDocModal(filename, dupBlobUrl || href, savedPath, '', dupBlobUrl);
+								if (window.dismissStuckViewer) window.dismissStuckViewer();
+							}
+							releaseDownloadRequest(requestKey);
+							return;
+						}
 						var isPdf = filename.toLowerCase().endsWith('.pdf');
 						var previewBlob = isPdf ? blob.slice(0, blob.size, 'application/pdf') : blob;
 						var ownedBlobUrl = isPdf ? origCreateObjectURL(previewBlob) : '';
@@ -1468,6 +1476,7 @@ func getInitScript(ua string) string {
 							if (window.saveDownloadedFileNative) {
 								window.saveDownloadedFileNative(filename, base64data).then(function(savedPath) {
 									if (savedPath) {
+										markDownloadComplete(requestKey, savedPath, blob.size);
 										if (shouldAutoOpen) {
 											showInAppDocModal(filename, ownedBlobUrl || href, savedPath, base64data, ownedBlobUrl);
 											if (window.dismissStuckViewer) window.dismissStuckViewer();
@@ -1478,31 +1487,27 @@ func getInitScript(ua string) string {
 									} else {
 										if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
 										showFloatingToast('❌ Failed to save file.');
-									}
-									if (savedPath) {
-										markDownloadComplete(requestKey, savedPath);
-									} else {
-										releaseDownloadRequest(requestKey, true);
+										releaseDownloadRequest(requestKey);
 									}
 								}).catch(function() {
 									if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
 									showFloatingToast('❌ Error saving file.');
-									releaseDownloadRequest(requestKey, true);
+									releaseDownloadRequest(requestKey);
 								});
 							} else {
 								if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
-								releaseDownloadRequest(requestKey, true);
+								releaseDownloadRequest(requestKey);
 							}
 						};
 						reader.onerror = function() {
 							if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
-							releaseDownloadRequest(requestKey, true);
+							releaseDownloadRequest(requestKey);
 						};
 						reader.readAsDataURL(blob);
 					})
 					.catch(function(err) {
 						console.error('Download intercept fetch error:', err);
-						releaseDownloadRequest(requestKey, true);
+						releaseDownloadRequest(requestKey);
 					});
 			}
 
@@ -1895,7 +1900,7 @@ func getInitScript(ua string) string {
 					'  </div>' +
 					'  <div>' +
 					'    <h3 id="wa-modal-title" style="margin:0;font-size:15px;font-weight:600;">WhatsApp Desk</h3>' +
-					'    <span id="wa-modal-sub" style="font-size:11px;">Application settings · version 1.5.6</span>' +
+					'    <span id="wa-modal-sub" style="font-size:11px;">Application settings · version 1.5.7</span>' +
 					'  </div>' +
 					'</div>' +
 					'<button id="wa-settings-close-x" style="background:transparent;border:none;cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;">✕</button>';

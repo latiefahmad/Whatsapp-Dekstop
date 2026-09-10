@@ -20,7 +20,7 @@ The screenshots use blurred chat content to protect personal information.
 
 ## Download
 
-Current release: **v1.5.6**
+Current release: **v1.5.7**
 
 | Platform | Download |
 | --- | --- |
@@ -89,15 +89,11 @@ Default profile locations:
 - Windows: `%APPDATA%\WhatsAppDesk\UserData\`
 - Linux: `~/.config/whatsapp-desk/`
 
-## Version 1.5.6
+## Version 1.5.7
 
-- Silent background update on Windows: no console window flashes during self-update.
-- Opening downloads and previewed files no longer flashes a console window.
-- First official Fedora packages (RPM) alongside Debian, Ubuntu, and portable tarballs.
-- Reliable document preview and close-to-chat behavior.
-- Reliable Light, Dark, and System appearance switching.
-- Lower background DOM work and more conservative media buffering.
-- Improved memory lifecycle on macOS, Windows, and Linux.
+- Attach menu works on macOS: Document and Photos & videos now open the native file picker.
+- Files are no longer saved twice when a download is triggered from two paths.
+- All v1.5.6 fixes included: silent background update on Windows (no console flashes), Fedora RPM packages, reliable document preview and appearance switching.
 
 Older releases are retained for reference but are deprecated.
 
