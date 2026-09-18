@@ -1,10 +1,13 @@
 package main
 
-import "runtime"
+import (
+	"runtime"
+	"strings"
+)
 
 const (
-	windowWidth  = 1100
-	windowHeight = 750
+	windowWidth  = 1200
+	windowHeight = 800
 )
 
 func getInitScript(ua string) string {
@@ -21,7 +24,72 @@ func getInitScript(ua string) string {
 		clientArch = "x86"
 	}
 
-	return xlsxLibJS + `
+	script := `
+		// --- Safe storage -------------------------------------------------
+		// localStorage throws (SecurityError) instead of returning null when
+		// the engine denies storage: WebView2 does this in InPrivate mode and
+		// when the profile directory is read-only. Unguarded calls used to
+		// abort the whole injected script, which took the Settings control and
+		// every keyboard shortcut down with it. All reads/writes go through
+		// here so a denied store degrades to "preference not persisted".
+		var waMemoryStore = {};
+		function storageGet(key) {
+			try {
+				var v = localStorage.getItem(key);
+				if (v !== null) return v;
+			} catch (e) {
+				waNoteRecoverable('storage-get', e);
+			}
+			return Object.prototype.hasOwnProperty.call(waMemoryStore, key) ? waMemoryStore[key] : null;
+		}
+		function storageSet(key, value) {
+			waMemoryStore[key] = String(value);
+			try {
+				localStorage.setItem(key, String(value));
+			} catch (e) {
+				waNoteRecoverable('storage-set', e);
+			}
+		}
+		function storageRemove(key) {
+			delete waMemoryStore[key];
+			try {
+				localStorage.removeItem(key);
+			} catch (e) {
+				waNoteRecoverable('storage-remove', e);
+			}
+		}
+
+		// --- Recoverable-failure log --------------------------------------
+		// Non-fatal problems are recorded instead of thrown so one degraded
+		// feature never disables the rest of the injected script. Bounded, and
+		// surfaced by the in-app diagnostics panel.
+		var waRecoverable = [];
+		function waNoteRecoverable(where, err) {
+			try {
+				waRecoverable.push(where + ': ' + String((err && err.message) || err));
+				if (waRecoverable.length > 25) waRecoverable.shift();
+			} catch (e) {}
+		}
+		window.__waRecoverable = function() { return waRecoverable.slice(); };
+
+		// Runs a module so that a failure inside it cannot stop later modules.
+		// Each IIFE below is independent; without this an early throw (a WebView2
+		// API difference, a denied storage read) removes every enhancement
+		// defined after it.
+		function waRunModule(name, fn) {
+			try {
+				return fn();
+			} catch (e) {
+				waNoteRecoverable(name, e);
+				return undefined;
+			}
+		}
+
+		// Go-side platform constant — more reliable than navigator.platform which is
+		// deprecated in Chrome 93+ and may return "" in newer WebView2 builds.
+		var __WA_GOOS = '` + runtime.GOOS + `';
+
+	try {
 		// UserAgent and platform override to Google Chrome
 		Object.defineProperty(navigator, 'userAgent', {
 			get: () => '` + ua + `'
@@ -46,8 +114,26 @@ func getInitScript(ua string) string {
 			delete window.safari;
 		} catch (e) {}
 
+		// NOTE (v1.5.9): a <meta> Content-Security-Policy allowlist was tried in
+		// v1.5.8 and REVERTED — WhatsApp Web loads its boot bundles from Meta
+		// CDN hosts outside any maintainable allowlist, so the policy blocked
+		// boot and left the app stuck on the splash screen. Do not re-add a
+		// meta CSP without a report-only phase first.
+
+		// WhatsApp's virtualized lists can emit hundreds of DOM mutations while the
+		// user scrolls. Our enhancements are non-critical during that gesture, so
+		// defer them briefly instead of competing with WebKit's renderer. This is
+		// deliberately a shared gate: observers keep their correctness but never
+		// create a second rendering workload during fast scrolling.
+		var waBackgroundWorkBusyUntil = 0;
+		function markBackgroundWorkBusy() {
+			waBackgroundWorkBusyUntil = Date.now() + 350;
+		}
+		window.addEventListener('scroll', markBackgroundWorkBusy, { passive: true, capture: true });
+		window.addEventListener('wheel', markBackgroundWorkBusy, { passive: true, capture: true });
+		window.addEventListener('touchmove', markBackgroundWorkBusy, { passive: true, capture: true });
 		function shouldPauseBackgroundWork() {
-			return document.hidden === true;
+			return document.hidden === true || Date.now() < waBackgroundWorkBusyUntil;
 		}
 
 		// Emulate navigator.userAgentData (User-Agent Client Hints)
@@ -90,7 +176,7 @@ func getInitScript(ua string) string {
 		// PDF plugin makes WhatsApp open a viewer that WKWebView cannot render.
 
 		// Native Notification Polyfill & ServiceWorker Notification Interceptor
-		(function() {
+		waRunModule('notifications', function() {
 			function dispatchNativeNotification(title, options) {
 				options = options || {};
 				var body = options.body || '';
@@ -127,10 +213,10 @@ func getInitScript(ua string) string {
 					};
 				}
 			} catch (e) {}
-		})();
+		});
 
 		// Robust HTML5 Media Autoplay & Inline Playback Support for Status/Stories and Videos
-		(function() {
+		waRunModule('media-playback', function() {
 			if (!window.HTMLMediaElement) return;
 
 			function prepareMedia(el) {
@@ -172,7 +258,13 @@ func getInitScript(ua string) string {
 				var mediaScanScheduled = false;
 				var pendingMediaRoots = [];
 				function queueMediaRoot(node) {
-					if (node && node.nodeType === 1) pendingMediaRoots.push(node);
+					if (!node || node.nodeType !== 1 || pendingMediaRoots.length >= 24) return;
+					try {
+						if ((node.matches && node.matches('video, audio')) ||
+							(node.querySelector && node.querySelector('video, audio'))) {
+							pendingMediaRoots.push(node);
+						}
+					} catch (e) {}
 				}
 				function scanForUnpreparedMedia() {
 					mediaScanScheduled = false;
@@ -199,20 +291,27 @@ func getInitScript(ua string) string {
 					}
 					scheduleMediaScan();
 				});
-				var targetNode = document.documentElement || document.body;
-				if (targetNode) {
-					mediaObserver.observe(targetNode, { childList: true, subtree: true });
-					queueMediaRoot(targetNode);
-					scheduleMediaScan();
+				var targetNode = document.documentElement || document.body || document;
+				if (targetNode && targetNode.nodeType) {
+					try {
+						mediaObserver.observe(targetNode, { childList: true, subtree: true });
+						queueMediaRoot(targetNode);
+						scheduleMediaScan();
+					} catch (e) {}
 				} else {
 					document.addEventListener('DOMContentLoaded', function() {
-						mediaObserver.observe(document.body, { childList: true, subtree: true });
-						queueMediaRoot(document.body);
-						scheduleMediaScan();
+						var root = document.body || document.documentElement || document;
+						if (root && root.nodeType) {
+							try {
+								mediaObserver.observe(root, { childList: true, subtree: true });
+								queueMediaRoot(root);
+								scheduleMediaScan();
+							} catch (e) {}
+						}
 					});
 				}
 			}
-		})();
+		});
 
 		function isDocumentFileName(name) {
 			if (!name) return false;
@@ -430,6 +529,271 @@ func getInitScript(ua string) string {
 				} catch(err) {}
 			}
 		}, true);
+
+		// Drag & Drop file upload to chat (stabilized for macOS and Windows)
+		var lastUploadAt = 0;
+		function isRecentUpload() {
+			return (Date.now() - lastUploadAt) < 6000;
+		}
+
+		waRunModule('drag-drop-paste', function() {
+			var dragCounter = 0;
+			var dropInProgress = false;
+
+			function getDropZone() {
+				return document.querySelector('#main') || document.querySelector('[data-testid="conversation-panel"]') || document.querySelector('[data-testid="chat-list"]') || document.body;
+			}
+
+			function isFileDrag(e) {
+				var dt = e.dataTransfer;
+				if (!dt) return false;
+				if (dt.types) {
+					for (var i = 0; i < dt.types.length; i++) {
+						if (dt.types[i] === 'Files') return true;
+					}
+				}
+				return false;
+			}
+
+			function isChatDrop(e) {
+				var target = e.target;
+				if (target && target.closest && target.closest('#wa-settings-modal, #wa-doc-modal-overlay, #wa-onboarding-overlay, [role="dialog"]')) {
+					if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+					return false;
+				}
+				return true;
+			}
+
+			function handleDragEnter(e) {
+				if (!isFileDrag(e) || !isChatDrop(e)) return;
+				dragCounter++;
+				e.preventDefault();
+				// Do NOT stopPropagation — let WhatsApp's own dragenter handlers also fire
+				// so its native drop zone activates (needed for document drops)
+				var dz = getDropZone();
+				if (dz) dz.classList.add('wa-drag-over');
+			}
+
+			function handleDragLeave(e) {
+				dragCounter--;
+				if (dragCounter <= 0) {
+					dragCounter = 0;
+					var dz = getDropZone();
+					if (dz) dz.classList.remove('wa-drag-over');
+				}
+			}
+
+			function handleDragOver(e) {
+				if (!isFileDrag(e) || !isChatDrop(e)) return;
+				e.preventDefault();
+				// Do NOT stopPropagation — WhatsApp needs dragover to reach #main
+				// for its native drop handler to accept the drop event
+				e.dataTransfer.dropEffect = 'copy';
+			}
+
+			function isMediaFile(file) {
+				if (!file) return false;
+				var t = (file.type || '').toLowerCase();
+				var n = (file.name || '').toLowerCase();
+				if (t.startsWith('image/') || t.startsWith('video/')) return true;
+				return /\.(jpe?g|png|gif|webp|bmp|svg|ico|heic|heif|mp4|mov|m4v|3gp|mkv|avi|webm)$/i.test(n);
+			}
+
+			function areAllMediaFiles(files) {
+				if (!files || !files.length) return false;
+				for (var i = 0; i < files.length; i++) {
+					if (!isMediaFile(files[i])) return false;
+				}
+				return true;
+			}
+
+			function findAttachButton() {
+				return document.querySelector(
+					'[data-testid="attach-menu-plus"], ' +
+					'[data-testid="conversation-clip"], ' +
+					'[data-testid="clip"], [data-icon="clip"], ' +
+					'[data-testid="plus"], [data-icon="plus"], ' +
+					'#main footer [role="button"][aria-label*="Attach" i], ' +
+					'#main footer [role="button"][aria-label*="Lampirkan" i], ' +
+					'#main footer button[aria-label*="Attach" i], ' +
+					'#main footer button[aria-label*="Lampirkan" i], ' +
+					'button[aria-label*="Attach" i], button[aria-label*="Lampirkan" i], ' +
+					'[role="button"][aria-label*="Attach" i], [role="button"][aria-label*="Lampirkan" i], ' +
+					'button[title*="Attach" i], button[title*="Lampirkan" i]'
+				);
+			}
+
+			function findInputInOrNear(el) {
+				if (!el) return null;
+				var inp = el.querySelector('input[type="file"]');
+				if (inp) return inp;
+				var container = el.closest('li, [role="menuitem"], [role="button"], [data-testid*="attach"]');
+				if (container) {
+					inp = container.querySelector('input[type="file"]');
+					if (inp) return inp;
+				}
+				if (el.parentElement) {
+					inp = el.parentElement.querySelector('input[type="file"]');
+					if (inp) return inp;
+				}
+				return null;
+			}
+
+			function findMediaInput() {
+				var selectors = [
+					'li[data-testid*="attach-media"]',
+					'li[data-testid*="attach-image"]',
+					'li[data-testid*="image"]',
+					'[data-testid*="attach-media"]',
+					'[data-testid*="attach-image"]',
+					'[data-testid="mi-attach-media"]',
+					'[data-testid="attach-image"]',
+					'[data-icon="attach-image"]',
+					'[data-icon="image"]',
+					'[aria-label*="Photos & videos" i]',
+					'[aria-label*="Foto & video" i]',
+					'[aria-label*="Fotos y videos" i]',
+					'[aria-label*="Fotos e vídeos" i]',
+					'[title*="Photos & videos" i]',
+					'[title*="Foto & video" i]'
+				];
+				for (var s = 0; s < selectors.length; s++) {
+					var el = document.querySelector(selectors[s]);
+					if (el) {
+						var inp = findInputInOrNear(el);
+						if (inp) return inp;
+					}
+				}
+
+				var allInputs = document.querySelectorAll('input[type="file"]');
+				for (var i = 0; i < allInputs.length; i++) {
+					var input = allInputs[i];
+					if (input.closest && input.closest('[data-testid*="sticker"], [aria-label*="sticker" i], [aria-label*="stiker" i]')) {
+						continue;
+					}
+					var accept = (input.getAttribute('accept') || '').toLowerCase();
+					if (accept.indexOf('image/png,image/jpeg,image/webp') !== -1 && accept.indexOf('image/*') === -1) {
+						continue;
+					}
+					if (accept.indexOf('image/*') !== -1 || accept.indexOf('video') !== -1) {
+						return input;
+					}
+				}
+				return null;
+			}
+
+			// Find a hidden document file input that is pre-rendered in the DOM by WhatsApp Web.
+			// WhatsApp pre-renders hidden file inputs even before the attach menu is opened.
+			// The document input typically has accept="*" or no accept attribute.
+			function findDocumentInput() {
+				var allInputs = document.querySelectorAll('input[type="file"]');
+				for (var i = 0; i < allInputs.length; i++) {
+					var input = allInputs[i];
+
+					// Skip sticker inputs
+					if (input.closest && input.closest('[data-testid*="sticker"], [aria-label*="sticker" i], [aria-label*="stiker" i]')) {
+						continue;
+					}
+
+					var accept = (input.getAttribute('accept') || '').toLowerCase().trim();
+
+					// Skip clearly media-only inputs (image/* or video/* without broad acceptance)
+					if (accept === 'image/*' || accept === 'video/*') continue;
+					if (accept.indexOf('image/*') !== -1 && accept.indexOf('video') !== -1 &&
+					    accept.indexOf('pdf') === -1 && accept.indexOf('application') === -1 && accept !== '*') {
+						continue;
+					}
+					if (accept.indexOf('image/png,image/jpeg,image/webp') !== -1 && accept.indexOf('*') === -1) {
+						continue;
+					}
+
+					// Document inputs:
+					//  - accept="*" or accept="*/*" (accept all)
+					//  - accept="" or no accept attribute (no restriction)
+					//  - accept contains document/application types
+					if (accept === '*' || accept === '*/*' || accept === '' ||
+					    accept.indexOf('document') !== -1 || accept.indexOf('application') !== -1 ||
+					    accept.indexOf('pdf') !== -1) {
+						return input;
+					}
+				}
+				return null;
+			}
+
+			function setFilesOnInput(fileInput, files) {
+				if (!fileInput || !files || files.length === 0) return false;
+				try {
+					var dt = new DataTransfer();
+					for (var i = 0; i < files.length; i++) dt.items.add(files[i]);
+					var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'files');
+					if (setter && setter.set) {
+						setter.set.call(fileInput, dt.files);
+					} else {
+						fileInput.files = dt.files;
+					}
+					if (!fileInput.files || fileInput.files.length !== files.length) {
+						fileInput.files = dt.files;
+					}
+					fileInput.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+					fileInput.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+					return true;
+				} catch (err) {
+					return false;
+				}
+			}
+
+			// Only used for media injection (documents are handled natively by WhatsApp).
+			function injectFiles(files, attempt, isMedia) {
+				if (isMedia === undefined) isMedia = areAllMediaFiles(files);
+
+				var targetInput = isMedia ? findMediaInput() : findDocumentInput();
+				if (targetInput && setFilesOnInput(targetInput, files)) {
+					return true;
+				}
+
+				if (attempt < 40) {
+					setTimeout(function() { injectFiles(files, attempt + 1, isMedia); }, 40);
+				}
+				return false;
+			}
+
+			function handleDrop(e) {
+				if (!isFileDrag(e) || !isChatDrop(e) || dropInProgress) return;
+
+				var files = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
+				if (!files || files.length === 0) return;
+
+				dragCounter = 0;
+				var dz = getDropZone();
+				if (dz) dz.classList.remove('wa-drag-over');
+
+				var isMedia = areAllMediaFiles(files);
+
+				// Prevent browser navigation (navigating to file:// URL)
+				e.preventDefault();
+				lastUploadAt = Date.now(); // prevent download interceptor from triggering
+
+				// Do NOT stopImmediatePropagation so WhatsApp's native drop handler
+				// on #main / conversation-panel receives the drop event for BOTH
+				// media (photos/videos) and documents (PDF, Office, etc.).
+				// Fallback: If WhatsApp's native modal has not opened after a delay,
+				// attempt programmatic injection.
+				setTimeout(function() {
+					var modalOpen = document.querySelector(
+						'[data-testid="media-editor"], [data-testid="image-editor"], ' +
+						'[data-testid="drawer-middle"], [role="dialog"], [data-animate-modal-popup="true"]'
+					);
+					if (!modalOpen) {
+						injectFiles(files, 0, isMedia);
+					}
+				}, 400);
+			}
+
+			document.addEventListener('dragenter', handleDragEnter, true);
+			document.addEventListener('dragleave', handleDragLeave, true);
+			document.addEventListener('dragover', handleDragOver, true);
+			document.addEventListener('drop', handleDrop, true);
+		});
 
 		// Helper: Decode base64 dataURI to Uint8Array
 		function base64ToUint8Array(dataUri) {
@@ -684,6 +1048,41 @@ func getInitScript(ua string) string {
 				};
 			}
 
+			// Lazy-load SheetJS (xlsx.core.min.js) only when spreadsheet preview is first needed.
+			var xlsxLoadPromise = null;
+			function ensureXLSXLoaded() {
+				// Only a library that exposes XLSX.utils is usable; an empty stub would
+				// make every later XLSX.utils call throw, so treat that as "not loaded".
+				if (window.XLSX && window.XLSX.utils) return Promise.resolve();
+				if (xlsxLoadPromise) return xlsxLoadPromise;
+				xlsxLoadPromise = new Promise(function(resolve, reject) {
+					// Fetch the bundled SheetJS from the native side
+					if (window.loadXLSXLibraryNative) {
+						window.loadXLSXLibraryNative().then(function(jsCode) {
+							try {
+								  eval(jsCode);
+								  // If the host page happens to expose CommonJS exports/module,
+								  // the SheetJS core build initialises that object instead of a global
+								  // and leaves window.XLSX as an empty stub. The direct eval above also
+								  // created an eval-scoped XLSX binding, so prefer it in that case.
+								  if (typeof XLSX !== 'undefined' && (!window.XLSX || !window.XLSX.utils)) {
+								      window.XLSX = XLSX;
+								  }
+								  if (!window.XLSX || !window.XLSX.utils) {
+								      throw new Error('spreadsheet library failed to initialise');
+								  }
+								  resolve();
+							} catch (e) {
+								  reject(e);
+							}
+						}).catch(reject);
+					} else {
+						reject(new Error('loadXLSXLibraryNative not available'));
+					}
+				});
+				return xlsxLoadPromise;
+			}
+
 			// Render a parsed spreadsheet workbook (from the bundled SheetJS library) as an
 			// HTML table, with a sheet-switcher tab bar when the workbook has multiple sheets.
 			function renderSpreadsheetPreview(workbook, activeSheetName) {
@@ -737,20 +1136,24 @@ func getInitScript(ua string) string {
 				}
 			} else if (ext === 'csv' || ext === 'xlsx' || ext === 'xls') {
 				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Loading spreadsheet preview...</div>';
-				try {
-					var rawXlsxB64 = (dataUri || '').indexOf(';base64,') !== -1 ? dataUri.split(';base64,')[1] : (dataUri || '');
-					if (rawXlsxB64 && window.XLSX) {
-						// SheetJS auto-detects the real format from the bytes (OOXML zip for
-						// .xlsx, binary OLE2/BIFF for legacy .xls, or plain text for .csv), so
-						// one code path correctly previews all three, including .xls which the
-						// previous hand-rolled parser never actually supported.
-						var workbook = XLSX.read(rawXlsxB64, { type: 'base64', cellDates: true });
-						renderSpreadsheetPreview(workbook);
-					} else {
-						renderCardFallback();
-					}
-				} catch (e) {
-					renderCardFallback('Unable to render an in-app preview for this spreadsheet. Click below to open it in your default application.');
+				var rawXlsxB64 = (dataUri || '').indexOf(';base64,') !== -1 ? dataUri.split(';base64,')[1] : (dataUri || '');
+				if (rawXlsxB64) {
+					ensureXLSXLoaded().then(function() {
+						try {
+							// SheetJS auto-detects the real format from the bytes (OOXML zip for
+							// .xlsx, binary OLE2/BIFF for legacy .xls, or plain text for .csv), so
+							// one code path correctly previews all three, including .xls which the
+							// previous hand-rolled parser never actually supported.
+							var workbook = XLSX.read(rawXlsxB64, { type: 'base64', cellDates: true });
+							renderSpreadsheetPreview(workbook);
+						} catch (e) {
+							renderCardFallback('Unable to render an in-app preview for this spreadsheet. Click below to open it in your default application.');
+						}
+					}).catch(function() {
+						renderCardFallback('Unable to load spreadsheet library.');
+					});
+				} else {
+					renderCardFallback();
 				}
 			} else if (ext === 'docx') {
 				body.innerHTML = '<div style="color:#8696a0;font-size:13px;display:flex;align-items:center;gap:8px;">⏳ Loading Word preview...</div>';
@@ -881,7 +1284,7 @@ func getInitScript(ua string) string {
 					bType === 'text/csv' || bType === 'text/plain' ||
 					(blob && (blob.type === 'application/octet-stream' || bType === '') && isRecentPDFIntent());
 
-				if (blob && isDocBlob) {
+				if (blob && isDocBlob && !isRecentUpload()) {
 					var name = lastClickedDocName || 'document';
 					if (!name.includes('.')) {
 						if (bType.indexOf('pdf') >= 0) name += '.pdf';
@@ -963,7 +1366,7 @@ func getInitScript(ua string) string {
 		};
 
 		// Zoom Keyboard Shortcuts (Cmd + / Cmd - / Cmd 0)
-		(function() {
+		waRunModule('zoom-shortcuts', function() {
 			var currentZoom = 1.0;
 			window.addEventListener('keydown', function(e) {
 				if (e.metaKey || e.ctrlKey) {
@@ -982,10 +1385,10 @@ func getInitScript(ua string) string {
 					}
 				}
 			});
-		})();
+		});
 
 		// Dock Badge Unread Count Synchronizer
-		(function() {
+		waRunModule('dock-badge', function() {
 			var lastBadge = null;
 			function syncBadge() {
 				var title = document.title || '';
@@ -999,15 +1402,19 @@ func getInitScript(ua string) string {
 				}
 			}
 			var titleEl = document.querySelector('title');
-			if (titleEl) {
-				new MutationObserver(syncBadge).observe(titleEl, { childList: true, characterData: true, subtree: true });
+			if (titleEl && titleEl.nodeType) {
+				try {
+					new MutationObserver(syncBadge).observe(titleEl, { childList: true, characterData: true, subtree: true });
+				} catch (e) {
+					setInterval(syncBadge, 3000);
+				}
 			} else {
 				setInterval(syncBadge, 3000);
 			}
-		})();
+		});
 
 		// Memory Optimization: Idle Garbage Collection
-		(function() {
+		waRunModule('memory-opt', function() {
 			var releaseTimer = null;
 			document.addEventListener('visibilitychange', function() {
 				clearTimeout(releaseTimer);
@@ -1021,10 +1428,10 @@ func getInitScript(ua string) string {
 					if (window.releaseMemoryNative) window.releaseMemoryNative();
 				}, 5000);
 			});
-		})();
+		});
 
 		// Debounced window resize persistence
-		(function() {
+		waRunModule('window-resize', function() {
 			var resizeTimer = null;
 			window.addEventListener('resize', function() {
 				clearTimeout(resizeTimer);
@@ -1038,64 +1445,399 @@ func getInitScript(ua string) string {
 					}
 				}, 500);
 			});
-		})();
+		});
 
-		// Floating HUD Toast for User Feedback
-		function showFloatingToast(msg) {
+		// Floating HUD Toast for User Feedback. Optional action renders a
+		// clickable button inside the toast (e.g. "Open folder" after a
+		// download); the toast then stays interactive for a few seconds longer.
+		function showFloatingToast(msg, action) {
 			var toast = document.getElementById('wa-hud-toast');
 			if (!toast) {
 				toast = document.createElement('div');
 				toast.id = 'wa-hud-toast';
-				toast.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);background:rgba(32,44,51,0.94);backdrop-filter:blur(10px);color:#00a884;border:1px solid rgba(0,168,132,0.4);border-radius:20px;padding:8px 20px;font-size:12.5px;font-weight:600;z-index:9999999;box-shadow:0 8px 24px rgba(0,0,0,0.6);pointer-events:none;transition:all 0.22s cubic-bezier(0.16,1,0.3,1);opacity:0;';
+				toast.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);background:rgba(32,44,51,0.94);backdrop-filter:blur(10px);color:#00a884;border:1px solid rgba(0,168,132,0.4);border-radius:20px;padding:8px 20px;font-size:12.5px;font-weight:600;z-index:9999999;box-shadow:0 8px 24px rgba(0,0,0,0.6);transition:all 0.22s cubic-bezier(0.16,1,0.3,1);opacity:0;display:flex;align-items:center;gap:12px;max-width:90vw;';
 				var parent = document.body || document.documentElement;
 				if (parent) parent.appendChild(toast);
 			}
 			if (!toast) return;
-			toast.textContent = msg;
+			toast.textContent = '';
+			toast.style.pointerEvents = 'none';
+			var label = document.createElement('span');
+			label.textContent = msg;
+			label.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+			toast.appendChild(label);
+			if (action && action.label && typeof action.onClick === 'function') {
+				toast.style.pointerEvents = 'auto';
+				var btn = document.createElement('button');
+				btn.textContent = action.label;
+				btn.style.cssText = 'background:#00a884;color:#111b21;border:none;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;cursor:pointer;flex-shrink:0;';
+				btn.onclick = function(e) {
+					e.stopPropagation();
+					action.onClick();
+					toast.style.opacity = '0';
+				};
+				toast.appendChild(btn);
+			}
 			toast.style.opacity = '1';
 			toast.style.transform = 'translateX(-50%) translateY(4px)';
 			clearTimeout(toast._timer);
 			toast._timer = setTimeout(function() {
 				toast.style.opacity = '0';
 				toast.style.transform = 'translateX(-50%) translateY(0)';
-			}, 2500);
+				toast.style.pointerEvents = 'none';
+			}, action ? 6000 : 2500);
 		}
+		window.showFloatingToast = showFloatingToast;
+
+		// Issue reporter: page errors are buffered locally (never uploaded),
+		// and the Control Center offers a one-click pre-filled GitHub issue.
+		// Nothing leaves the machine until the user presses Report — the
+		// browser then shows the composed issue for review before submitting.
+		waRunModule('diagnostics-buffer', function() {
+			window.__waMeta = { ver: '__WA_APP_VERSION__', platform: '` + runtime.GOOS + `' };
+
+			var waErrBuf = [];
+			function waPushErr(kind, msg) {
+				msg = String(msg || 'unknown error').slice(0, 200);
+				var last = waErrBuf[waErrBuf.length - 1];
+				if (last && last.m === msg) { last.n++; return; }
+				waErrBuf.push({ k: kind, m: msg, n: 1 });
+				if (waErrBuf.length > 25) waErrBuf.shift();
+			}
+			window.addEventListener('error', function(e) {
+				var src = '';
+				try { src = String(e.filename || '').split('/').pop(); } catch (x) {}
+				waPushErr('error', (e.message || 'unknown') + ' @ ' + (src || '?') + ':' + (e.lineno || '?'));
+			}, true);
+			window.addEventListener('unhandledrejection', function(e) {
+				var r = e.reason;
+				waPushErr('unhandled', String((r && (r.stack || r.message)) || r).slice(0, 200));
+			});
+
+			function resolveMaybe(v) {
+				if (v && typeof v.then === 'function') return v;
+				return Promise.resolve(v);
+			}
+			window.openIssueReporter = function(crashTail) {
+				var meta = window.__waMeta || { ver: '?', platform: '?' };
+				var lines = ['WhatsApp Desk v' + meta.ver + ' (' + meta.platform + ')', ''];
+				if (waErrBuf.length) {
+					lines.push('Recent page errors:');
+					waErrBuf.slice(-8).forEach(function(e) {
+						lines.push('- [' + e.k + '] ' + e.m + (e.n > 1 ? ' (x' + e.n + ')' : ''));
+					});
+					lines.push('');
+				} else {
+					lines.push('No page errors captured.');
+					lines.push('');
+				}
+				if (crashTail) {
+					var fence = String.fromCharCode(96, 96, 96);
+					lines.push('Crash log tail:');
+					lines.push(fence);
+					lines.push(String(crashTail).slice(0, 1200));
+					lines.push(fence);
+				}
+				lines.push('_Submitted from the in-app reporter — please add steps to reproduce._');
+				var url = 'https://github.com/vianziro/Whatsapp-Dekstop/issues/new' +
+					'?title=' + encodeURIComponent('Report v' + meta.ver + ' (' + meta.platform + '): ') +
+					'&body=' + encodeURIComponent(lines.join('\n').slice(0, 2500)) +
+					'&labels=' + encodeURIComponent('bug');
+				if (window.openExternalLink) window.openExternalLink(url);
+				if (window.markCrashNotifiedNative) {
+					try { resolveMaybe(window.markCrashNotifiedNative()); } catch (e) {}
+				}
+			};
+			window.reportIssueNow = function() {
+				if (window.getPendingCrashNative) {
+					try {
+						resolveMaybe(window.getPendingCrashNative()).then(function(t) {
+							window.openIssueReporter(t || '');
+						});
+						return;
+					} catch (e) {}
+				}
+				window.openIssueReporter('');
+			};
+
+			// Startup nudge, once per crash: offer reporting instead of nagging.
+			setTimeout(function() {
+				if (!window.getPendingCrashNative || typeof showFloatingToast !== 'function') return;
+				try {
+					resolveMaybe(window.getPendingCrashNative()).then(function(tail) {
+						if (!tail) return;
+						showFloatingToast('⚠️ Previous session crashed — tap to report', {
+							label: 'Report',
+							onClick: function() { window.reportIssueNow(); }
+						});
+					});
+				} catch (e) {}
+			}, 10000);
+		});
 
 		// Privacy Mode Toggle (Cmd + Shift + P)
-		(function() {
+		waRunModule('privacy-mode', function() {
 			var isPrivacyActive = false;
 			var styleEl = document.createElement('style');
 			styleEl.id = 'whatsapp-privacy-style';
-			styleEl.textContent = '.privacy-mode #main .copyable-text, .privacy-mode #main img, .privacy-mode #main video, .privacy-mode #pane-side span[title] { filter: blur(8px) !important; transition: filter 0.15s ease-in-out; } .privacy-mode #main .copyable-text:hover, .privacy-mode #main img:hover, .privacy-mode #main video:hover, .privacy-mode #pane-side span[title]:hover { filter: none !important; }';
+			// PRIVACY STRATEGY: text and previews use authentic visual blur
+			// (filter: blur(6px)), not opaque gray redaction blocks.
+			// Layout and timestamps (:not([data-wa-time])) remain preserved.
+			// Full set of chat list container selectors ensures instant auto-unblur
+			// on hover across all modern WhatsApp Web DOM structures.
+			styleEl.textContent = [
+				// Layer 1: names + previews in the chat list, hover row/item to peek.
+				// Spans tagged data-wa-time by the timestamp tagger below are
+				// always spared, so clock times stay readable.
+				'.privacy-mode #pane-side [role="row"] span:not([data-wa-time]),',
+				'.privacy-mode #pane-side [role="listitem"] span:not([data-wa-time]),',
+				'.privacy-mode #pane-side [data-testid="cell-frame-container"] span:not([data-wa-time]),',
+				'.privacy-mode #pane-side div[tabindex="-1"] span:not([data-wa-time]),',
+				'.privacy-mode #pane-side ._ak8q,',
+				'.privacy-mode #pane-side ._ak8k,',
+				'.privacy-mode [data-testid="chat-list"] [role="row"] span:not([data-wa-time]),',
+				'.privacy-mode [data-testid="chat-list"] [role="listitem"] span:not([data-wa-time]),',
+				'.privacy-mode [data-testid="chat-list"] [data-testid="cell-frame-container"] span:not([data-wa-time]),',
+				'.privacy-mode [data-testid="chat-list"] div[tabindex="-1"] span:not([data-wa-time])',
+				'{ filter: blur(6px) !important; transition: filter 0.15s ease-out !important; }',
+				// Hovering any row or container restores its contents instantly.
+				'.privacy-mode #pane-side [role="row"]:hover span,',
+				'.privacy-mode #pane-side [role="listitem"]:hover span,',
+				'.privacy-mode #pane-side [data-testid="cell-frame-container"]:hover span,',
+				'.privacy-mode #pane-side div[tabindex="-1"]:hover span,',
+				'.privacy-mode #pane-side div._ak8l:hover span,',
+				'.privacy-mode #pane-side [role="row"]:hover ._ak8q,',
+				'.privacy-mode #pane-side [role="listitem"]:hover ._ak8q,',
+				'.privacy-mode #pane-side [data-testid="cell-frame-container"]:hover ._ak8q,',
+				'.privacy-mode #pane-side div[tabindex="-1"]:hover ._ak8q,',
+				'.privacy-mode #pane-side [role="row"]:hover ._ak8k,',
+				'.privacy-mode #pane-side [role="listitem"]:hover ._ak8k,',
+				'.privacy-mode #pane-side [data-testid="cell-frame-container"]:hover ._ak8k,',
+				'.privacy-mode #pane-side div[tabindex="-1"]:hover ._ak8k,',
+				'.privacy-mode [data-testid="chat-list"] [role="row"]:hover span,',
+				'.privacy-mode [data-testid="chat-list"] [role="listitem"]:hover span,',
+				'.privacy-mode [data-testid="chat-list"] [data-testid="cell-frame-container"]:hover span,',
+				'.privacy-mode [data-testid="chat-list"] div[tabindex="-1"]:hover span,',
+				'.privacy-mode #pane-side span:hover,',
+				'.privacy-mode #pane-side ._ak8q:hover,',
+				'.privacy-mode #pane-side ._ak8k:hover',
+				'{ filter: none !important; }',
+				// Layer 2: everything textual inside a message bubble.
+				// Hovering the bubble restores the whole subtree.
+				'.privacy-mode #main [data-testid="msg-container"] span:not([data-wa-time]),',
+				'.privacy-mode #main .message-in span:not([data-wa-time]),',
+				'.privacy-mode #main .message-out span:not([data-wa-time])',
+				'{ filter: blur(6px) !important; transition: filter 0.15s ease-out !important; }',
+				'.privacy-mode #main [data-testid="msg-container"]:hover span,',
+				'.privacy-mode #main .message-in:hover span,',
+				'.privacy-mode #main .message-out:hover span,',
+				'.privacy-mode #main [data-testid="msg-container"] span:hover,',
+				'.privacy-mode #main .message-in span:hover,',
+				'.privacy-mode #main .message-out span:hover',
+				'{ filter: none !important; }',
+				// In-chat photos/videos hide with blur; hover restores symmetrically.
+				'.privacy-mode #main [data-testid="msg-container"] img:not([data-emoji]),',
+				'.privacy-mode #main [data-testid="msg-container"] video,',
+				'.privacy-mode #main .message-in img:not([data-emoji]),',
+				'.privacy-mode #main .message-in video,',
+				'.privacy-mode #main .message-out img:not([data-emoji]),',
+				'.privacy-mode #main .message-out video',
+				'{ filter: blur(12px) !important; transition: filter 0.15s ease-out !important; }',
+				'.privacy-mode #main [data-testid="msg-container"]:hover img,',
+				'.privacy-mode #main [data-testid="msg-container"]:hover video,',
+				'.privacy-mode #main .message-in:hover img,',
+				'.privacy-mode #main .message-in:hover video,',
+				'.privacy-mode #main .message-out:hover img,',
+				'.privacy-mode #main .message-out:hover video,',
+				'.privacy-mode #main [data-testid="msg-container"] img:hover,',
+				'.privacy-mode #main [data-testid="msg-container"] video:hover',
+				'{ filter: none !important; }',
+				// Layer 3: conversation header name/status, hover to reveal.
+				'.privacy-mode #main header span:not([data-wa-time])',
+				'{ filter: blur(6px) !important; transition: filter 0.15s ease-out !important; }',
+				'.privacy-mode #main header:hover span,',
+				'.privacy-mode #main header span:hover',
+				'{ filter: none !important; }',
+				// Layer 4: optional avatar blur (.blur-avatars on <html>).
+				'.privacy-mode.blur-avatars #pane-side img,',
+				'.privacy-mode.blur-avatars [data-testid="chat-list"] img,',
+				'.privacy-mode.blur-avatars #main header img,',
+				'.privacy-mode.blur-avatars #main .message-in img,',
+				'.privacy-mode.blur-avatars #main .message-out img',
+				'{ filter: blur(12px) !important; transition: filter 0.15s ease-out !important; }',
+				'.privacy-mode.blur-avatars #pane-side [role="row"]:hover img,',
+				'.privacy-mode.blur-avatars #pane-side [role="listitem"]:hover img,',
+				'.privacy-mode.blur-avatars #pane-side [data-testid="cell-frame-container"]:hover img,',
+				'.privacy-mode.blur-avatars #pane-side div[tabindex="-1"]:hover img,',
+				'.privacy-mode.blur-avatars #pane-side div._ak8l:hover img,',
+				'.privacy-mode.blur-avatars #pane-side img:hover,',
+				'.privacy-mode.blur-avatars [data-testid="chat-list"] [role="row"]:hover img,',
+				'.privacy-mode.blur-avatars [data-testid="chat-list"] [role="listitem"]:hover img,',
+				'.privacy-mode.blur-avatars [data-testid="chat-list"] [data-testid="cell-frame-container"]:hover img,',
+				'.privacy-mode.blur-avatars [data-testid="chat-list"] div[tabindex="-1"]:hover img,',
+				'.privacy-mode.blur-avatars #main header:hover img,',
+				'.privacy-mode.blur-avatars #main header img:hover,',
+				'.privacy-mode.blur-avatars #main .message-in:hover img,',
+				'.privacy-mode.blur-avatars #main .message-out:hover img',
+				'{ filter: none !important; }',
+				// Layer 5: fullscreen media viewer
+				'.privacy-mode [data-testid="media-viewer"] img,',
+				'.privacy-mode [data-testid="media-viewer"] video',
+				'{ filter: blur(16px) !important; transition: filter 0.15s ease-out !important; }',
+				'.privacy-mode [data-testid="media-viewer"]:hover img,',
+				'.privacy-mode [data-testid="media-viewer"]:hover video',
+				'{ filter: none !important; }',
+				// Drag & drop visual feedback
+				'.wa-drag-over { outline: 3px solid #00a884; outline-offset: -3px; }',
+				'.wa-drag-over * { pointer-events: none; }'
+			].join('\n');
 
-			window.togglePrivacyMode = function() {
-				isPrivacyActive = !isPrivacyActive;
+			function applyPrivacyMode(active, silent) {
+				isPrivacyActive = !!active;
+				// State lives on <html>, never on WhatsApp's mutable <body>.
+				// All privacy selectors are descendant selectors, so they
+				// match identically from the <html> ancestor.
+				var rootEl = document.documentElement;
+				if (!rootEl) return isPrivacyActive;
 				if (isPrivacyActive) {
 					if (!document.getElementById('whatsapp-privacy-style')) {
-						document.head.appendChild(styleEl);
+						var h = document.head || rootEl;
+						if (h) h.appendChild(styleEl);
 					}
-					document.body.classList.add('privacy-mode');
-					showFloatingToast('🔒 Privacy Mode: Enabled');
+					rootEl.classList.add('privacy-mode');
+					if (!silent) showFloatingToast('🔒 Privacy Mode: Enabled');
 				} else {
-					document.body.classList.remove('privacy-mode');
-					showFloatingToast('🔓 Privacy Mode: Disabled');
+					rootEl.classList.remove('privacy-mode');
+					if (!silent) showFloatingToast('🔓 Privacy Mode: Disabled');
 				}
 				return isPrivacyActive;
+			}
+
+			window.togglePrivacyMode = function() {
+				// A manual toggle also cancels any pending auto-lock timer.
+				return applyPrivacyMode(!isPrivacyActive, false);
 			};
 			window.isPrivacyModeActive = function() {
 				return isPrivacyActive;
 			};
 
+			// "Blur profile photos" setting: gates the .blur-avatars layer.
+			// Applied on <html> next to .privacy-mode; persisted natively.
+			window.isBlurAvatars = function() {
+				return !!(document.documentElement && document.documentElement.classList && document.documentElement.classList.contains('blur-avatars'));
+			};
+
+			// Timestamp sparing: tag short clock/day strings so the CSS above
+			// can exclude them via :not([data-wa-time]). textContent never
+			// forces layout; each span is visited once (__waTimeSeen); the
+			// :not() selector keeps repeat runs cheap. Ticks at most every 3s,
+			// only while privacy is on and the page is visible, so the steady
+			// state cost is ~zero. Attribute writes don't trip the childList
+			// observers, so this can't feed an observer loop.
+			var WA_TIME_RE = /^(\d{1,2}:\d{2}(\s?(AM|PM))?|Today|Yesterday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Hari ini|Kemarin|Senin|Selasa|Rabu|Kamis|Jumat|Sabtu|Minggu)$/i;
+			function tagTimesIn(root) {
+				if (!root || !root.querySelectorAll) return;
+				var spans = root.querySelectorAll('span:not([data-wa-time])');
+				var n = 0;
+				for (var i = 0; i < spans.length && n < 250; i++) {
+					var s = spans[i];
+					if (s.__waTimeSeen) continue;
+					s.__waTimeSeen = true;
+					n++;
+					try {
+						var t = (s.textContent || '').trim();
+						if (WA_TIME_RE.test(t)) s.setAttribute('data-wa-time', '1');
+					} catch (e) {}
+				}
+			}
+			setInterval(function() {
+				if (!isPrivacyActive || shouldPauseBackgroundWork()) return;
+				tagTimesIn(document.getElementById('main'));
+				tagTimesIn(document.getElementById('pane-side'));
+			}, 3000);
+			window.setBlurAvatars = function(on) {
+				on = !!on;
+				if (document.documentElement && document.documentElement.classList) {
+					if (on) document.documentElement.classList.add('blur-avatars');
+					else document.documentElement.classList.remove('blur-avatars');
+				}
+				if (window.setBlurAvatarsNative) {
+					Promise.resolve(window.setBlurAvatarsNative(on)).catch(function() {});
+				}
+				return on;
+			};
+			if (window.getBlurAvatarsNative) {
+				window.getBlurAvatarsNative().then(function(on) {
+					if (on && document.documentElement && document.documentElement.classList) {
+						document.documentElement.classList.add('blur-avatars');
+					}
+				}).catch(function() {});
+			}
+
+			// Auto-lock on idle: the Control Center copy promises "blur chats and
+			// media when cursor is idle", so honor it. When enabled, the app
+			// blurs after a period of no mouse/keyboard activity, or immediately
+			// when the window loses focus, and unblurs on the next interaction.
+			// Persisted in localStorage so it survives reloads.
+			var AUTO_LOCK_KEY = 'wa_desk_privacy_autolock';
+			var autoLockEnabled = storageGet(AUTO_LOCK_KEY) === '1';
+			var IDLE_MS = 60000;
+			var idleTimer = null;
+			var autoLocked = false;
+
+			function isAutoLockEnabled() { return autoLockEnabled; }
+			function setAutoLockEnabled(on) {
+				autoLockEnabled = !!on;
+				storageSet(AUTO_LOCK_KEY, autoLockEnabled ? '1' : '0');
+				if (!autoLockEnabled && autoLocked) unlockFromIdle();
+				else resetIdleTimer();
+				return autoLockEnabled;
+			}
+			window.isAutoLockEnabled = isAutoLockEnabled;
+			window.setAutoLockEnabled = setAutoLockEnabled;
+			window.isPrivacyAutoLock = isAutoLockEnabled;
+			window.setPrivacyAutoLock = setAutoLockEnabled;
+
+			function lockForIdle() {
+				if (!autoLockEnabled || autoLocked) return;
+				autoLocked = true;
+				applyPrivacyMode(true, true);
+			}
+			function unlockFromIdle() {
+				if (!autoLocked) return;
+				autoLocked = false;
+				applyPrivacyMode(false, true);
+			}
+			function resetIdleTimer() {
+				if (autoLocked) unlockFromIdle();
+				clearTimeout(idleTimer);
+				if (autoLockEnabled) idleTimer = setTimeout(lockForIdle, IDLE_MS);
+			}
+
+			var activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'wheel'];
+			activityEvents.forEach(function(ev) {
+				window.addEventListener(ev, resetIdleTimer, { passive: true, capture: true });
+			});
+			// Losing window focus is the strongest "stepping away" signal.
+			window.addEventListener('blur', function() { if (autoLockEnabled) lockForIdle(); });
+			window.addEventListener('focus', function() { resetIdleTimer(); });
+			document.addEventListener('visibilitychange', function() {
+				if (document.hidden) { if (autoLockEnabled) lockForIdle(); }
+				else resetIdleTimer();
+			});
+			resetIdleTimer();
+
 			window.addEventListener('keydown', function(e) {
 				if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'p' || e.key === 'P')) {
 					e.preventDefault();
+					e.stopPropagation();
 					window.togglePrivacyMode();
 				}
-			});
-		})();
+			}, true);
+		});
 
 		// Always on Top Toggle (Cmd/Ctrl + Shift + T)
-		(function() {
+		waRunModule('always-on-top', function() {
 			var isPinnedState = false;
 			window.toggleAlwaysOnTop = function() {
 				if (window.toggleAlwaysOnTopNative) {
@@ -1114,10 +1856,11 @@ func getInitScript(ua string) string {
 			window.addEventListener('keydown', function(e) {
 				if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 't' || e.key === 'T')) {
 					e.preventDefault();
+					e.stopPropagation();
 					window.toggleAlwaysOnTop();
 				}
-			});
-		})();
+			}, true);
+		});
 
 		// Reload and Refresh Functions (Cmd/Ctrl + R, Cmd/Ctrl + Shift + R, F5)
 		window.reloadWhatsApp = function() {
@@ -1141,15 +1884,17 @@ func getInitScript(ua string) string {
 		window.addEventListener('keydown', function(e) {
 			if (e.key === 'F5' || ((e.metaKey || e.ctrlKey) && (e.key === 'r' || e.key === 'R') && !e.shiftKey && !e.altKey)) {
 				e.preventDefault();
+				e.stopPropagation();
 				window.reloadWhatsApp();
 			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'r' || e.key === 'R')) {
 				e.preventDefault();
+				e.stopPropagation();
 				window.hardRefreshWhatsApp();
 			}
-		});
+		}, true);
 
 		// Audio Mute Toggle (Cmd/Ctrl + Shift + M)
-		(function() {
+		waRunModule('audio-mute', function() {
 			var isMuted = false;
 			window.toggleMuteAudio = function() {
 				isMuted = !isMuted;
@@ -1166,18 +1911,19 @@ func getInitScript(ua string) string {
 			window.addEventListener('keydown', function(e) {
 				if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'm' || e.key === 'M')) {
 					e.preventDefault();
+					e.stopPropagation();
 					window.toggleMuteAudio();
 				}
-			});
+			}, true);
 			document.addEventListener('play', function(e) {
 				if (isMuted && e.target && (e.target.tagName === 'AUDIO' || e.target.tagName === 'VIDEO')) {
 					e.target.muted = true;
 				}
 			}, true);
-		})();
+		});
 
 		// Auto-Start at Login Toggle (Cmd/Ctrl + Shift + S)
-		(function() {
+		waRunModule('launch-on-boot', function() {
 			var isAutoStartState = false;
 			window.toggleAutoStart = function() {
 				if (window.toggleAutoStartNative) {
@@ -1196,16 +1942,19 @@ func getInitScript(ua string) string {
 			window.addEventListener('keydown', function(e) {
 				if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 's' || e.key === 'S')) {
 					e.preventDefault();
+					e.stopPropagation();
 					window.toggleAutoStart();
 				}
-			});
-		})();
+			}, true);
+		});
 
 		// In-App Auto Updater UI and Handlers
-		(function() {
+		waRunModule('app-updater', function() {
 			window.showUpdateBanner = function(latestVersion, releaseTitle, downloadUrl) {
 				if (document.getElementById('wa-update-banner')) return;
-				if (sessionStorage.getItem('dismissed_update_' + latestVersion) === 'true') return;
+				try {
+					if (sessionStorage.getItem('dismissed_update_' + latestVersion) === 'true') return;
+				} catch (e) {}
 
 				if (!document.getElementById('wa-update-anim')) {
 					var animStyle = document.createElement('style');
@@ -1342,8 +2091,10 @@ func getInitScript(ua string) string {
 					return window.checkForUpdateNative(true).then(function(res) {
 						if (res && res.available) {
 							window.showUpdateBanner(res.latest_version, res.release_title, res.download_url);
+						} else if (res && res.check_error) {
+							showFloatingToast('⚠️ Update check failed: ' + res.check_error);
 						} else {
-							var cur = (res && res.current_version) ? res.current_version : '1.5.7';
+							var cur = (res && res.current_version) ? res.current_version : '__WA_APP_VERSION__';
 							showFloatingToast('✅ WhatsApp Desk is up to date (v' + cur + ')');
 						}
 						return res;
@@ -1357,13 +2108,14 @@ func getInitScript(ua string) string {
 			window.addEventListener('keydown', function(e) {
 				if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'u' || e.key === 'U')) {
 					e.preventDefault();
+					e.stopPropagation();
 					window.triggerCheckForUpdate();
 				}
-			});
-		})();
+			}, true);
+		});
 
 		// Dynamic Responsive Desktop Layout (enables seamless shrinking and expanding)
-		(function() {
+		waRunModule('responsive-css', function() {
 			var respStyle = document.createElement('style');
 			respStyle.id = 'whatsapp-desktop-responsive';
 			respStyle.textContent = '' +
@@ -1378,24 +2130,243 @@ func getInitScript(ua string) string {
 				'  #pane-side, div[data-testid="chat-list"], #main { min-width: 0 !important; }' +
 				'}';
 
-			var respTimer = null;
+			// Once <head> exists the style never needs re-injection, so poll only
+			// via a cheap head observer instead of an endless 2.5s interval.
 			function injectResponsive() {
-				if (document.head && !document.getElementById('whatsapp-desktop-responsive')) {
-					document.head.appendChild(respStyle);
-					if (respTimer) {
-						clearInterval(respTimer);
-						respTimer = null;
-					}
+				var targetHead = document.head || (document.documentElement && document.documentElement.querySelector && document.documentElement.querySelector('head'));
+				if (targetHead && !document.getElementById('whatsapp-desktop-responsive')) {
+					targetHead.appendChild(respStyle);
+					try { observer.disconnect(); } catch (e) {}
 				}
 			}
-			injectResponsive();
-			document.addEventListener('DOMContentLoaded', injectResponsive);
-			window.addEventListener('load', injectResponsive);
-			respTimer = setInterval(injectResponsive, 2500);
-		})();
+			var observer = new MutationObserver(injectResponsive);
+			if (document.head) {
+				injectResponsive();
+			} else if (document.documentElement && document.documentElement.nodeType) {
+				try { observer.observe(document.documentElement, { childList: true }); } catch (e) {}
+			} else if (document && document.nodeType) {
+				try { observer.observe(document, { childList: true, subtree: true }); } catch (e) {}
+			}
+			document.addEventListener('DOMContentLoaded', function() {
+				injectResponsive();
+				try { observer.disconnect(); } catch (e) {}
+			}, { once: true });
+		});
+
+		// Native Spell Check for textareas (macOS NSSpellChecker, Windows ISpellCheckProvider, Linux GTK)
+		waRunModule('spellcheck', function() {
+			var spellCheckEnabled = true;
+			var spellCheckLang = 'auto';
+
+			function applySpellCheck(el) {
+				if (!el || el.nodeType !== 1 || el.dataset.spellCheckInitialized) return;
+				el.dataset.spellCheckInitialized = 'true';
+				el.spellcheck = spellCheckEnabled;
+				if (spellCheckLang !== 'auto') {
+					el.lang = spellCheckLang;
+				}
+			}
+
+			function enableSpellCheckOnTextareas(scope) {
+				var selector = 'textarea[contenteditable="true"], div[contenteditable="true"][role="textbox"], textarea';
+				var root = (scope && scope.querySelectorAll) ? scope : document;
+				try {
+					if (scope && scope.matches && scope.matches(selector)) applySpellCheck(scope);
+					var textareas = root.querySelectorAll(selector);
+					for (var i = 0; i < textareas.length; i++) applySpellCheck(textareas[i]);
+				} catch (e) {}
+			}
+
+			function initSpellCheck() {
+				// Initial enable
+				enableSpellCheckOnTextareas();
+
+				// Watch for new textareas (WhatsApp Web is SPA). The chat list is
+				// virtualized, so scrolling continuously adds and removes rows. The old
+				// version ran a document-wide querySelectorAll for every single added
+				// node, which is what made long chat-list scrolls stutter. Coalesce to
+				// one pass per animation frame and only for subtrees that can hold
+				// editable text.
+				var spellCheckScheduled = false;
+				var pendingSpellRoots = [];
+				function spellCheckRelevant(node) {
+					if (!node || node.nodeType !== 1) return false;
+					try {
+						return !!(node.matches && node.matches('[contenteditable="true"], textarea')) ||
+							!!(node.querySelector && node.querySelector('[contenteditable="true"], textarea'));
+					} catch (e) {
+						return false;
+					}
+				}
+				function runSpellCheckScan() {
+					spellCheckScheduled = false;
+					var roots = pendingSpellRoots.splice(0, pendingSpellRoots.length);
+					if (shouldPauseBackgroundWork()) return;
+					for (var r = 0; r < roots.length; r++) enableSpellCheckOnTextareas(roots[r]);
+				}
+				function scheduleSpellCheck() {
+					if (spellCheckScheduled || pendingSpellRoots.length === 0) return;
+					spellCheckScheduled = true;
+					requestAnimationFrame(runSpellCheckScan);
+				}
+				var observer = new MutationObserver(function(mutations) {
+					if (shouldPauseBackgroundWork()) return;
+					for (var i = 0; i < mutations.length && pendingSpellRoots.length < 12; i++) {
+						var added = mutations[i].addedNodes;
+						for (var j = 0; j < added.length && pendingSpellRoots.length < 12; j++) {
+							if (spellCheckRelevant(added[j])) pendingSpellRoots.push(added[j]);
+						}
+					}
+					scheduleSpellCheck();
+				});
+				var target = document.body || document.documentElement || document;
+				if (target && target.nodeType) {
+					try { observer.observe(target, { childList: true, subtree: true }); } catch (e) {}
+				}
+
+				// Also re-check on navigation
+				var lastUrl = location.href;
+				setInterval(function() {
+					if (location.href !== lastUrl) {
+						lastUrl = location.href;
+						setTimeout(enableSpellCheckOnTextareas, 300);
+					}
+				}, 1000);
+			}
+
+			// Expose toggle for settings
+			window.toggleSpellCheck = function(enabled) {
+				spellCheckEnabled = !!enabled;
+				enableSpellCheckOnTextareas();
+				if (window.setSpellCheckEnabledNative) {
+					window.setSpellCheckEnabledNative(spellCheckEnabled);
+				}
+			};
+
+			window.setSpellCheckLanguage = function(lang) {
+				spellCheckLang = lang;
+				enableSpellCheckOnTextareas();
+			};
+
+			if (document.readyState === 'loading') {
+				document.addEventListener('DOMContentLoaded', initSpellCheck);
+			} else {
+				initSpellCheck();
+			}
+		});
+
+		// Context Menu: Search/Translate selected text
+		waRunModule('context-menu', function() {
+			var contextMenu = null;
+			var lastSelection = '';
+			var lastSelectionRect = null;
+
+			function createContextMenu() {
+				if (contextMenu) return;
+				contextMenu = document.createElement('div');
+				contextMenu.id = 'wa-context-menu';
+				contextMenu.style.cssText = 'position:fixed;z-index:9999999;background:#202c33;border:1px solid #2a3942;border-radius:8px;padding:6px 0;box-shadow:0 8px 24px rgba(0,0,0,0.4);min-width:180px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;font-size:13px;color:#e9edef;';
+				contextMenu.innerHTML = '' +
+					'<div class="wa-cm-item" data-action="search" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;">' +
+					'  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#00a884;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>' +
+					'  <span>Search on Google</span>' +
+					'</div>' +
+					'<div class="wa-cm-item" data-action="translate" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;">' +
+					'  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#00a884;"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path><line x1="12" y1="12" x2="12" y2="12"></line></svg>' +
+					'  <span>Translate</span>' +
+					'</div>' +
+					'<hr style="margin:6px 8px;border:none;border-top:1px solid #2a3942;">' +
+					'<div class="wa-cm-item" data-action="copy" style="padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;">' +
+					'  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:#8696a0;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>' +
+					'  <span>Copy</span>' +
+					'</div>';
+				var parent = document.body || document.documentElement;
+				if (parent) parent.appendChild(contextMenu);
+
+				contextMenu.querySelectorAll('.wa-cm-item').forEach(function(item) {
+					item.addEventListener('mouseenter', function() {
+						this.style.background = '#2a3942';
+					});
+					item.addEventListener('mouseleave', function() {
+						this.style.background = 'transparent';
+					});
+					item.addEventListener('click', function() {
+						var action = this.dataset.action;
+						handleContextAction(action);
+						hideContextMenu();
+					});
+				});
+
+				document.addEventListener('click', hideContextMenu, true);
+				document.addEventListener('scroll', hideContextMenu, true);
+			}
+
+			function showContextMenu(x, y, text) {
+				createContextMenu();
+				lastSelection = text;
+				contextMenu.style.left = x + 'px';
+				contextMenu.style.top = y + 'px';
+				contextMenu.style.display = 'block';
+			}
+
+			function hideContextMenu() {
+				if (contextMenu) {
+					contextMenu.style.display = 'none';
+				}
+			}
+
+			function handleContextAction(action) {
+				if (!lastSelection) return;
+				var encoded = encodeURIComponent(lastSelection);
+				if (action === 'search') {
+					window.openExternalLink && window.openExternalLink('https://www.google.com/search?q=' + encoded);
+				} else if (action === 'translate') {
+					window.openExternalLink && window.openExternalLink('https://translate.google.com/?sl=auto&tl=id&text=' + encoded + '&op=translate');
+				} else if (action === 'copy') {
+					navigator.clipboard.writeText(lastSelection).then(function() {
+						if (window.showFloatingToast) window.showFloatingToast('📋 Copied to clipboard');
+					});
+				}
+			}
+
+			function getSelectedText() {
+				var selection = window.getSelection();
+				if (!selection || selection.rangeCount === 0) return '';
+				var text = selection.toString().trim();
+				return text.length > 0 && text.length < 500 ? text : '';
+			}
+
+			function onContextMenu(e) {
+				var text = getSelectedText();
+				if (text) {
+					e.preventDefault();
+					showContextMenu(e.clientX, e.clientY, text);
+				}
+			}
+
+			document.addEventListener('contextmenu', onContextMenu, true);
+
+			// Also show on long-press for touch devices
+			var longPressTimer = null;
+			document.addEventListener('touchstart', function(e) {
+				var text = getSelectedText();
+				if (text) {
+					longPressTimer = setTimeout(function() {
+						var touch = e.touches[0];
+						showContextMenu(touch.clientX, touch.clientY, text);
+					}, 500);
+				}
+			}, { passive: true });
+			document.addEventListener('touchend', function() {
+				if (longPressTimer) clearTimeout(longPressTimer);
+			});
+			document.addEventListener('touchmove', function() {
+				if (longPressTimer) clearTimeout(longPressTimer);
+			});
+		});
 
 		// Automatic Download & Document Preview Interceptor for Chat Files & Media
-		(function() {
+		waRunModule('document-viewer', function() {
 			var activeDownloadKeys = Object.create(null);
 
 			function downloadRequestKey(href, filename) {
@@ -1411,10 +2382,23 @@ func getInitScript(ua string) string {
 				delete activeDownloadKeys[requestKey];
 			}
 
+			// Toast action: opens the downloads folder in Finder/Explorer.
+			function openFolderAction() {
+				if (!window.openDownloadDirNative) return null;
+				return {
+					label: 'Open folder',
+					onClick: function() { window.openDownloadDirNative(); }
+				};
+			}
+
 			function markDownloadComplete(requestKey, savedPath, blobSize) {
 				var completedRequest = { status: 'complete', savedPath: savedPath };
 				activeDownloadKeys[requestKey] = completedRequest;
 				if (blobSize) activeDownloadSizes[blobSize] = savedPath;
+				// Tell the badge layer this filename is now on disk so the next
+				// scan badges it without a redundant native stat.
+				var savedBase = (savedPath || '').split(/[\\/]/).pop();
+				if (savedBase && window.__waMarkSaved) window.__waMarkSaved(savedBase);
 				// Retain only the tiny path entry, never the Blob or base64 payload.
 				setTimeout(function() {
 					if (activeDownloadKeys[requestKey] === completedRequest) {
@@ -1457,7 +2441,8 @@ func getInitScript(ua string) string {
 						// byte-identical duplicates as a final backstop.
 						if (blob.size && activeDownloadSizes[blob.size]) {
 							var savedPath = activeDownloadSizes[blob.size];
-							showFloatingToast(shouldAutoOpen ? ('📄 Already saved: ' + filename) : ('💾 File already saved: ' + filename));
+							if (window.__waMarkSaved) window.__waMarkSaved(filename);
+							showFloatingToast(shouldAutoOpen ? ('📄 Already saved: ' + filename) : ('💾 File already saved: ' + filename), openFolderAction());
 							if (shouldAutoOpen) {
 								var isPdfDup = filename.toLowerCase().endsWith('.pdf');
 								var dupBlobUrl = isPdfDup ? origCreateObjectURL(blob.slice(0, blob.size, 'application/pdf')) : '';
@@ -1480,9 +2465,9 @@ func getInitScript(ua string) string {
 										if (shouldAutoOpen) {
 											showInAppDocModal(filename, ownedBlobUrl || href, savedPath, base64data, ownedBlobUrl);
 											if (window.dismissStuckViewer) window.dismissStuckViewer();
-											showFloatingToast('📄 Preview opened: ' + filename);
+											showFloatingToast('📄 Preview opened: ' + filename, openFolderAction());
 										} else {
-											showFloatingToast('💾 Saved successfully: ' + filename);
+											showFloatingToast('💾 Saved successfully: ' + filename, openFolderAction());
 										}
 									} else {
 										if (ownedBlobUrl) URL.revokeObjectURL(ownedBlobUrl);
@@ -1671,24 +2656,153 @@ func getInitScript(ua string) string {
 			});
 
 			function initViewerObserver() {
-				var target = document.body || document.documentElement;
-				if (target) {
-					viewerObserver.observe(target, { childList: true, subtree: true });
+				var target = document.body || document.documentElement || document;
+				if (target && target.nodeType) {
+					try { viewerObserver.observe(target, { childList: true, subtree: true }); } catch (e) {}
 				} else {
 					document.addEventListener('DOMContentLoaded', initViewerObserver, { once: true });
 				}
 			}
 			initViewerObserver();
-		})();
+		});
+
+		// "Saved to disk" badges on the Media/Docs panel. WhatsApp has no notion
+		// of local downloads, so bridge it: for each document/media item shown in
+		// the all-chats panel, check whether the same filename exists in the
+		// configured downloads folder and tag it with a small green check.
+		waRunModule('saved-badges', function() {
+			var savedScanQueued = false;
+			var lastSavedScanAt = 0;
+			var savedCache = {};
+			var savedPending = {};
+			var badgeStyle = 'display:inline-flex;align-items:center;gap:2px;margin-left:6px;padding:0 6px;border-radius:8px;' +
+				'font-size:10px;font-weight:600;line-height:14px;vertical-align:middle;background:rgba(6,174,116,.16);color:#06ae74;';
+
+			function fileExistsOnDisk(name) {
+				if (!name || !window.checkFileExistsNative) return Promise.resolve(false);
+				if (name in savedCache) return Promise.resolve(savedCache[name]);
+				// Coalesce concurrent lookups for the same name: repeated scans
+				// while a check is in flight must not spam the native binding.
+				if (savedPending[name]) return savedPending[name];
+				var p = window.checkFileExistsNative(name).then(function(exists) {
+					delete savedPending[name];
+					savedCache[name] = !!exists;
+					return !!exists;
+				}).catch(function() {
+					delete savedPending[name];
+					return false;
+				});
+				savedPending[name] = p;
+				return p;
+			}
+
+			// Called by the download path so a just-saved file badges instantly.
+			window.__waMarkSaved = function(name) {
+				if (name) savedCache[name] = true;
+			};
+
+			function decorateItem(el, name) {
+				if (el.__waSavedBadge) return;
+				fileExistsOnDisk(name).then(function(exists) {
+					if (!exists) return;
+					el.__waSavedBadge = true;
+					var badge = document.createElement('span');
+					badge.className = 'wa-saved-badge';
+					badge.setAttribute('aria-label', 'Already saved to downloads folder');
+					badge.style.cssText = badgeStyle;
+					badge.textContent = '✓ Saved';
+					// Prefer overlaying media thumbnails; append for text rows.
+					var host = el.querySelector('[data-testid="cell-frame-container"], .copyable-text') || el;
+					host.style.position = host.style.position || 'relative';
+					host.appendChild(badge);
+				});
+			}
+
+			function itemFileName(el) {
+				var t = el.getAttribute && (el.getAttribute('title') || '');
+				if (!t) {
+					var titleEl = el.querySelector && el.querySelector('span[title], div[title]');
+					t = titleEl ? (titleEl.getAttribute('title') || '') : '';
+				}
+				if (!t) return '';
+				var m = t.match(/([^\n\r<>]{1,180}\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf|zip|mp4|mkv|mov|mp3|wav|jpe?g|png|webp|heic))\b/i);
+				return m ? m[1].trim() : '';
+			}
+
+			function scanPanel() {
+				// Only scan where items can actually be seen: the open media/docs
+				// panel (dialog/viewer) or the current chat pane. Scanning the
+				// whole document on every chat-list mutation is exactly the
+				// background churn this app is supposed to avoid.
+				var scope = document.querySelector('[role="dialog"], [data-testid="media-viewer"]') ||
+					document.getElementById('main');
+				if (!scope) return;
+				var rows = scope.querySelectorAll('[role="row"], [data-testid="cell-frame-outer"], .message-in, .message-out');
+				for (var i = 0; i < rows.length; i++) {
+					var row = rows[i];
+					if (row.__waSavedBadge) continue;
+					var name = itemFileName(row);
+					if (name) decorateItem(row, name);
+				}
+			}
+
+			function scheduleScan() {
+				if (savedScanQueued || shouldPauseBackgroundWork()) return;
+				// Hard throttle: the panel observer fires on every DOM mutation
+				// while WhatsApp virtualizes lists; 2s between scans is plenty
+				// for a "saved" badge that is purely informational.
+				var now = Date.now();
+				if (now - lastSavedScanAt < 2000) return;
+				savedScanQueued = true;
+				requestAnimationFrame(function() {
+					savedScanQueued = false;
+					lastSavedScanAt = Date.now();
+					scanPanel();
+				});
+			}
+
+			// Observe only where badges can appear (open dialog/viewer or the
+			// chat pane). Chat-list churn in #pane-side never needs a rescan,
+			// so ignore mutations outside the relevant scope entirely.
+			function panelMutationRelevant(muts) {
+				for (var i = 0; i < muts.length; i++) {
+					var t = muts[i].target;
+					if (t && t.closest) {
+						try {
+							if (t.closest('#main, [role="dialog"], [data-testid="media-viewer"], #wa-doc-modal-overlay')) return true;
+						} catch (e) {}
+					}
+				}
+				return false;
+			}
+			var panelObserver = new MutationObserver(function(muts) {
+				if (panelMutationRelevant(muts)) scheduleScan();
+			});
+			function watchRoot() {
+				var root = document.body || document.documentElement || document;
+				if (root && root.nodeType) {
+					try { panelObserver.observe(root, { childList: true, subtree: true }); } catch (e) {}
+				}
+			}
+			watchRoot();
+			document.addEventListener('DOMContentLoaded', watchRoot, { once: true });
+			document.addEventListener('click', function(e) {
+				// Rescan when the user opens the media/docs panel from the toolbar.
+				if (e.target && e.target.closest && e.target.closest('[data-testid="chat-menu"], [data-icon="default-image"], [data-icon="docs"], [data-icon="image"]')) {
+					setTimeout(scheduleScan, 300);
+				}
+			}, true);
+		});
 
 		// Theme Manager, In-Flow Header Toolbar Button & Control Center Modal
-		(function() {
-			var isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+		waRunModule('settings-modal', function() {
+			var isMac = (__WA_GOOS === 'darwin') || (navigator.platform && navigator.platform.toUpperCase().indexOf('MAC') >= 0);
 			var currentTheme = 'dark';
-			var themeObserver = null;
 			var themeChoiceVersion = 0;
 			var themeLoadStarted = false;
 			var themeReloadTimer = null;
+			var themeReapplyTimers = [];
+			var themeStyle = null;
 			// Keep the engine's native MediaQueryList intact. Replacing matchMedia with
 			// a partial object breaks framework listeners on some WebView2/WebKitGTK
 			// versions and was the main cross-platform difference in theme switching.
@@ -1706,16 +2820,54 @@ func getInitScript(ua string) string {
 				var mode = isDark ? 'dark' : 'light';
 				var opposite = isDark ? 'light' : 'dark';
 				var root = document.documentElement;
+				if (!root) return;
 				root.classList.add(mode);
 				root.classList.remove(opposite);
 				root.setAttribute('data-theme', mode);
+				root.setAttribute('data-wa-desk-theme', mode);
 				root.style.colorScheme = mode;
 				if (document.body) {
 					document.body.classList.add(mode);
 					document.body.classList.remove(opposite);
 					document.body.setAttribute('data-theme', mode);
+					document.body.setAttribute('data-wa-desk-theme', mode);
 					document.body.style.colorScheme = mode;
 				}
+			}
+
+			function ensureThemeStyle() {
+				if (!themeStyle) themeStyle = document.getElementById('wa-desk-theme-style');
+				if (!themeStyle) {
+					themeStyle = document.createElement('style');
+					themeStyle.id = 'wa-desk-theme-style';
+					themeStyle.textContent = [
+						'html[data-wa-desk-theme="light"], html[data-wa-desk-theme="light"] body { color-scheme: light !important; background: #f7f9fa !important; }',
+						'html[data-wa-desk-theme="light"] #app, html[data-wa-desk-theme="light"] #side, html[data-wa-desk-theme="light"] #pane-side, html[data-wa-desk-theme="light"] #main { color-scheme: light !important; }'
+					].join('\n');
+					var target = document.head || document.documentElement;
+					if (target) {
+						target.appendChild(themeStyle);
+					}
+				}
+			}
+
+			function persistThemePreference(theme, isDark) {
+				storageSet('system-theme-mode', theme === 'system' ? 'true' : 'false');
+				storageSet('theme', JSON.stringify(theme === 'system' ? (isDark ? 'dark' : 'light') : theme));
+				storageSet('wa-desk-theme', theme);
+			}
+
+			function scheduleThemeReapply() {
+				while (themeReapplyTimers.length) clearTimeout(themeReapplyTimers.pop());
+				[0, 350, 1200, 2600].forEach(function(delay) {
+					themeReapplyTimers.push(setTimeout(function() {
+						var isDark = currentTheme === 'system' ? getSystemIsDark() : currentTheme === 'dark';
+						applyThemeClasses(isDark);
+						persistThemePreference(currentTheme, isDark);
+						if (window.syncToolbarBtnTheme) window.syncToolbarBtnTheme(isDark);
+						if (window.syncRailSettingsBtnTheme) window.syncRailSettingsBtnTheme(isDark);
+					}, delay));
+				});
 			}
 
 			function applyThemeToDOM(theme) {
@@ -1724,14 +2876,10 @@ func getInitScript(ua string) string {
 
 				// 1. Update the document immediately for our controls and current page.
 				applyThemeClasses(isDark);
+				ensureThemeStyle();
 
-				// 2. Synchronize WhatsApp Web's own localStorage keys
-				try {
-					var themeModeVal = theme === 'system' ? 'true' : 'false';
-					var themeVal = JSON.stringify(theme === 'system' ? (isDark ? 'dark' : 'light') : theme);
-					localStorage.setItem('system-theme-mode', themeModeVal);
-					localStorage.setItem('theme', themeVal);
-				} catch(e) {}
+				// 2. Synchronize WhatsApp Web's own localStorage keys before its tree settles.
+				persistThemePreference(theme, isDark);
 
 				// 3. Update modal and toolbar button if visible
 				if (window.syncModalTheme) {
@@ -1740,19 +2888,12 @@ func getInitScript(ua string) string {
 				if (window.syncToolbarBtnTheme) {
 					window.syncToolbarBtnTheme(isDark);
 				}
+				if (window.syncRailSettingsBtnTheme) window.syncRailSettingsBtnTheme(isDark);
 
-				// 4. Ensure MutationObserver prevents WhatsApp from reverting body theme class
-				if (window.MutationObserver && document.body) {
-					if (!themeObserver) {
-						themeObserver = new MutationObserver(function() {
-							if (shouldPauseBackgroundWork()) return;
-							var shouldBeDark = (currentTheme === 'system') ? getSystemIsDark() : (currentTheme === 'dark');
-							applyThemeClasses(shouldBeDark);
-						});
-					}
-					themeObserver.disconnect();
-					themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-				}
+				// WhatsApp may finish mounting after our script. Reapply a small, bounded
+				// number of times instead of observing body classes forever: that old
+				// observer could enter a feedback loop and raise CPU on Windows/macOS.
+				scheduleThemeReapply();
 			}
 
 			window.getAppTheme = function() {
@@ -1784,6 +2925,7 @@ func getInitScript(ua string) string {
 				var onSysChange = function() {
 					if (currentTheme === 'system') {
 						applyThemeToDOM('system');
+						if (window.setAppThemeNative) Promise.resolve(window.setAppThemeNative('system')).catch(function() {});
 					}
 				};
 				if (sysMedia.addEventListener) {
@@ -1813,15 +2955,15 @@ func getInitScript(ua string) string {
 
 			// --- In-Flow Header Toolbar Button (Non-Floating, Clean WhatsApp Style) ---
 			function injectHeaderToolbarBtn() {
-				if (shouldPauseBackgroundWork()) return;
 				if (document.getElementById('wa-toolbar-settings-btn')) return;
 
 				// Target WhatsApp Web's left header above chats
 				var header = document.querySelector('#side header') || document.querySelector('header');
 				if (!header) return;
 
-				// Find actions container inside header (where Status, Channels, New Chat icons live)
-				var actionsWrap = header.querySelector('div:last-child') || header.querySelector('span:last-child') || header;
+				// Header descendants change frequently. Use its direct trailing child, not
+				// querySelector('div:last-child'), which can select an invisible nested node.
+				var actionsWrap = header.lastElementChild || header;
 				if (!actionsWrap) return;
 
 				var btn = document.createElement('button');
@@ -1865,10 +3007,132 @@ func getInitScript(ua string) string {
 				actionsWrap.appendChild(btn);
 			}
 
-			injectHeaderToolbarBtn();
-			document.addEventListener('DOMContentLoaded', injectHeaderToolbarBtn);
-			window.addEventListener('load', injectHeaderToolbarBtn);
-			setInterval(injectHeaderToolbarBtn, 2000);
+			function isElementVisible(el) {
+				if (!el || !el.isConnected) return false;
+				var rect = el.getBoundingClientRect();
+				if (rect.width <= 0 || rect.height <= 0) return false;
+				var style = window.getComputedStyle(el);
+				if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+				var docEl = document.documentElement;
+				var vh = window.innerHeight || (docEl && docEl.clientHeight) || 800;
+				var vw = window.innerWidth || (docEl && docEl.clientWidth) || 1200;
+				if (rect.bottom <= 0 || rect.right <= 0 || rect.top >= vh || rect.left >= vw) return false;
+				var p = el.parentElement;
+				while (p && p !== document.body && p !== document.documentElement) {
+					var ps = window.getComputedStyle(p);
+					if (ps && (ps.overflow === 'hidden' || ps.overflowX === 'hidden' || ps.overflowY === 'hidden')) {
+						var pr = p.getBoundingClientRect();
+						if (rect.bottom <= pr.top || rect.top >= pr.bottom || rect.right <= pr.left || rect.left >= pr.right) {
+							return false;
+						}
+					}
+					p = p.parentElement;
+				}
+				return true;
+			}
+
+			// Keep one compact Settings control in the left rail. Header content is
+			// routinely rebuilt by WhatsApp, so the rail control exists as a
+			// safety net — but it must stay hidden while the header button is
+			// present and visible, otherwise the user sees two identical gears.
+			function ensureSettingsFallback() {
+				var headerButton = document.getElementById('wa-toolbar-settings-btn');
+				var headerVisible = isElementVisible(headerButton);
+				var fallback = document.getElementById('wa-settings-fallback-btn');
+				if (fallback) {
+					fallback.setAttribute('data-header-settings-visible', headerVisible ? 'true' : 'false');
+					// Hide the rail control whenever the header button works.
+					fallback.style.display = headerVisible ? 'none' : 'inline-flex';
+					if (window.__waRecheckEmergencySettings) window.__waRecheckEmergencySettings();
+					return;
+				}
+				if (!document.body) return;
+				fallback = document.createElement('button');
+				fallback.id = 'wa-settings-fallback-btn';
+				fallback.type = 'button';
+				fallback.setAttribute('aria-label', 'Open Settings and Controls');
+				fallback.title = 'Settings & Controls (' + (isMac ? 'Cmd' : 'Ctrl') + ' + ,)';
+				fallback.innerHTML = '<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
+				fallback.style.cssText = 'position:fixed;left:14px;bottom:20px;z-index:9999998;width:38px;height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(134,150,160,.45);border-radius:50%;background:#111b21;color:#aebac1;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);';
+				fallback.setAttribute('data-header-settings-visible', headerVisible ? 'true' : 'false');
+				// Only visible when the header button is missing or unusable.
+				fallback.style.display = headerVisible ? 'none' : 'inline-flex';
+				if (window.__waRecheckEmergencySettings) window.__waRecheckEmergencySettings();
+				window.syncRailSettingsBtnTheme = function(isDark) {
+					fallback.style.background = isDark ? '#111b21' : '#ffffff';
+					fallback.style.color = isDark ? '#aebac1' : '#54656f';
+					fallback.style.borderColor = isDark ? 'rgba(134,150,160,.45)' : 'rgba(84,101,111,.28)';
+				};
+				window.syncRailSettingsBtnTheme(currentTheme === 'system' ? getSystemIsDark() : currentTheme === 'dark');
+				fallback.onclick = function(e) {
+					e.preventDefault();
+					e.stopPropagation();
+					window.showSettingsModal();
+				};
+				document.body.appendChild(fallback);
+			}
+
+			function ensureSettingsEntryPoints() {
+				injectHeaderToolbarBtn();
+				// A button injected in this same tick has not been laid out yet:
+				// getBoundingClientRect() is still 0x0, so isElementVisible would
+				// report "hidden" and wrongly reveal the rail fallback. Re-check
+				// on the next frame, when the header button has real geometry.
+				requestAnimationFrame(ensureSettingsFallback);
+			}
+
+			ensureSettingsEntryPoints();
+			document.addEventListener('DOMContentLoaded', function() {
+				ensureSettingsEntryPoints();
+				setTimeout(ensureSettingsEntryPoints, 600);
+			});
+			window.addEventListener('load', ensureSettingsEntryPoints);
+			// WhatsApp rebuilds its header when switching chats, dropping our
+			// button. Watch only #side/header region changes (rAF-coalesced)
+			// instead of scanning the whole page every 2 seconds forever.
+			var toolbarCheckQueued = false;
+			var toolbarNarrowed = false;
+			var toolbarObserver = new MutationObserver(function() {
+				if (toolbarCheckQueued) return;
+				toolbarCheckQueued = true;
+					requestAnimationFrame(function() {
+						toolbarCheckQueued = false;
+						// Re-evaluate on any header change: the toolbar button may
+						// have been dropped (needs re-injection) or may have become
+						// hidden/clipped (rail fallback must take over). Checking the
+						// visibility too is what keeps exactly one gear on screen.
+						var headerButton = document.getElementById('wa-toolbar-settings-btn');
+						if (!headerButton || !isElementVisible(headerButton)) {
+							ensureSettingsEntryPoints();
+						}
+						// Narrow the observed root once the header exists.
+						if (!toolbarNarrowed) {
+							var hdr = document.querySelector('#side header');
+							if (hdr && hdr.nodeType) {
+								toolbarNarrowed = true;
+								try {
+									toolbarObserver.disconnect();
+									toolbarObserver.observe(hdr, { childList: true, subtree: true });
+								} catch (e) {}
+							}
+						}
+					});
+			});
+			function watchToolbarRoot() {
+				// Prefer the header itself: the chat list churns constantly and
+				// never affects our button. Fall back to #side, then body, and
+				// narrow down to the header as soon as it exists.
+				var root = document.querySelector('#side header') || document.querySelector('#side') || document.body || document.documentElement || document;
+				if (root && root.nodeType) {
+					toolbarNarrowed = !!document.querySelector('#side header');
+					try {
+						toolbarObserver.disconnect();
+						toolbarObserver.observe(root, { childList: true, subtree: true });
+					} catch (e) {}
+				}
+			}
+			watchToolbarRoot();
+			document.addEventListener('DOMContentLoaded', watchToolbarRoot, { once: true });
 
 			// --- Minimalist WhatsApp Control Center Modal ---
 			window.showSettingsModal = function() {
@@ -1900,7 +3164,7 @@ func getInitScript(ua string) string {
 					'  </div>' +
 					'  <div>' +
 					'    <h3 id="wa-modal-title" style="margin:0;font-size:15px;font-weight:600;">WhatsApp Desk</h3>' +
-					'    <span id="wa-modal-sub" style="font-size:11px;">Application settings · version 1.5.7</span>' +
+					'    <span id="wa-modal-sub" style="font-size:11px;">Application settings · version __WA_APP_VERSION__</span>' +
 					'  </div>' +
 					'</div>' +
 					'<button id="wa-settings-close-x" style="background:transparent;border:none;cursor:pointer;font-size:18px;line-height:1;padding:4px 8px;border-radius:4px;">✕</button>';
@@ -1929,19 +3193,29 @@ func getInitScript(ua string) string {
 				// Card 1: Privacy Mode
 				var cardPrivacy = document.createElement('div');
 				cardPrivacy.className = 'wa-modal-card';
-				cardPrivacy.style.cssText = 'border-radius:0;border-width:0 0 1px;border-style:solid;padding:12px 0;display:flex;align-items:center;justify-content:space-between;gap:16px;';
+				cardPrivacy.style.cssText = 'border-radius:0;border-width:0 0 1px;border-style:solid;padding:12px 0;display:flex;flex-direction:column;gap:8px;';
 				cardPrivacy.innerHTML = '' +
-					'<div>' +
-					'  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
-					'    <strong class="wa-text-primary" style="font-size:12.5px;">Privacy Mode</strong>' +
-					'    <span id="wa-badge-priv" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
+					'<div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">' +
+					'  <div>' +
+					'    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">' +
+					'      <strong class="wa-text-primary" style="font-size:12.5px;">Privacy Mode</strong>' +
+					'      <span id="wa-badge-priv" style="font-size:10px;padding:1px 5px;border-radius:4px;font-weight:600;">...</span>' +
+					'    </div>' +
+					'    <div class="wa-text-muted" style="font-size:11px;">Hide names, previews & message text until you turn this off. Hover to peek; timestamps stay visible; reply box stays usable.</div>' +
 					'  </div>' +
-					'  <div class="wa-text-muted" style="font-size:11px;">Blur chats and media when cursor is idle.</div>' +
+					'  <div style="display:flex;align-items:center;justify-content:space-between;">' +
+					'    <span class="wa-text-muted" style="font-size:10px;font-family:monospace;">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+P</span>' +
+					'    <button id="wa-action-toggle-priv" class="wa-card-btn" style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border-width:1px;border-style:solid;">Toggle</button>' +
+					'  </div>' +
 					'</div>' +
-					'<div style="display:flex;align-items:center;justify-content:space-between;">' +
-					'  <span class="wa-text-muted" style="font-size:10px;font-family:monospace;">' + (isMac ? 'Cmd' : 'Ctrl') + '+Shift+P</span>' +
-					'  <button id="wa-action-toggle-priv" class="wa-card-btn" style="padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border-width:1px;border-style:solid;">Toggle</button>' +
-					'</div>';
+					'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">' +
+					'  <input type="checkbox" id="wa-priv-autolock" style="width:14px;height:14px;accent-color:#00a884;cursor:pointer;margin:0;" />' +
+					'  <span class="wa-text-muted" style="font-size:11px;">Auto-lock when idle or window loses focus (unblurs on activity)</span>' +
+					'</label>' +
+					'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">' +
+					'  <input type="checkbox" id="wa-blur-avatars" style="width:14px;height:14px;accent-color:#00a884;cursor:pointer;margin:0;" />' +
+					'  <span class="wa-text-muted" style="font-size:11px;">Also blur profile photos (hover to peek)</span>' +
+					'</label>';
 				quickGrid.appendChild(cardPrivacy);
 
 				// Card 2: Always on Top
@@ -2016,7 +3290,11 @@ func getInitScript(ua string) string {
 					'<div style="display:flex;align-items:center;gap:6px;margin-top:2px;">' +
 					'  <button id="wa-btn-change-folder" class="wa-card-btn" style="flex:1;padding:6px 10px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;">Change Folder Location...</button>' +
 					'  <button id="wa-btn-open-folder" style="background:#00a884;color:#111b21;border:none;padding:6px 12px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;">' + (isMac ? 'Open in Finder' : 'Open Folder') + '</button>' +
-					'</div>';
+					'</div>' +
+					'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin-top:2px;">' +
+					'  <input type="checkbox" id="wa-organize-month" style="width:14px;height:14px;accent-color:#00a884;cursor:pointer;margin:0;" />' +
+					'  <span class="wa-text-muted" style="font-size:11px;">Organize into monthly subfolders (2026-09)</span>' +
+					'</label>';
 				modal.appendChild(folderSection);
 
 				// Section 3: Maintenance & Update Actions
@@ -2033,6 +3311,22 @@ func getInitScript(ua string) string {
 					'</div>';
 				modal.appendChild(actionsSection);
 
+				// Section 4: Help & local diagnostics. This intentionally performs no
+				// network request and never reads chat data; it only validates the
+				// small native bridge surface used by the application.
+				var helpSection = document.createElement('div');
+				helpSection.className = 'wa-modal-card';
+				helpSection.style.cssText = 'display:flex;flex-direction:column;gap:8px;border-radius:0;border-width:0 0 1px;border-style:solid;padding:14px 0;';
+				helpSection.innerHTML = '' +
+					'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">' +
+					'  <div><strong class="wa-text-primary" style="font-size:12.5px;">Help & diagnostics</strong><div class="wa-text-muted" style="font-size:11px;margin-top:2px;">Check the app surface locally. No chats or files are sent.</div></div>' +
+					'  <button id="wa-btn-run-diagnostics" class="wa-card-btn" style="padding:6px 10px;border-radius:6px;font-size:11.5px;font-weight:500;cursor:pointer;border-width:1px;border-style:solid;white-space:nowrap;">Run quick check</button>' +
+					'</div>' +
+					'<div id="wa-diagnostics-result" class="wa-text-muted" aria-live="polite" style="display:none;font-size:10.5px;line-height:1.45;border-radius:6px;padding:7px 8px;"></div>' +
+					'<button id="wa-btn-show-shortcuts" style="align-self:flex-start;background:transparent;border:none;color:#00a884;font-size:11px;cursor:pointer;padding:2px 0;">View keyboard shortcuts</button>' +
+					'<div id="wa-shortcuts-list" class="wa-text-muted" style="display:none;font-size:10.5px;line-height:1.65;"></div>';
+				modal.appendChild(helpSection);
+
 				// Disclaimer
 				var disclaimer = document.createElement('div');
 				disclaimer.className = 'wa-text-muted';
@@ -2044,11 +3338,24 @@ func getInitScript(ua string) string {
 				var footer = document.createElement('div');
 				footer.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:2px;';
 				footer.innerHTML = '<span class="wa-text-muted" style="font-size:10.5px;">Press <kbd style="padding:1px 3px;border-radius:3px;font-family:monospace;">Esc</kbd> to close</span>';
+				var footLeft = document.createElement('div');
+				footLeft.style.cssText = 'display:flex;align-items:center;gap:8px;';
+				var btnReport = document.createElement('button');
+				btnReport.textContent = '🐞 Report issue';
+				btnReport.id = 'wa-btn-report';
+				btnReport.title = 'Open a pre-filled GitHub issue with recent errors (nothing is sent automatically)';
+				btnReport.style.cssText = 'background:transparent;border:none;color:#8696a0;font-size:11px;cursor:pointer;padding:5px 8px;';
+				btnReport.onclick = function() {
+					closeSettings();
+					if (window.reportIssueNow) window.reportIssueNow();
+				};
 				var btnDone = document.createElement('button');
 				btnDone.textContent = 'Done';
 				btnDone.id = 'wa-btn-done';
 				btnDone.style.cssText = 'padding:5px 16px;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer;border-width:1px;border-style:solid;';
-				footer.appendChild(btnDone);
+				footLeft.appendChild(btnReport);
+				footLeft.appendChild(btnDone);
+				footer.appendChild(footLeft);
 				modal.appendChild(footer);
 
 				overlay.appendChild(modal);
@@ -2206,6 +3513,26 @@ func getInitScript(ua string) string {
 					if (window.togglePrivacyMode) window.togglePrivacyMode();
 					updateBadges();
 				};
+				var autoLockBox = document.getElementById('wa-priv-autolock');
+				if (autoLockBox) {
+					autoLockBox.checked = !!(window.isPrivacyAutoLock && window.isPrivacyAutoLock());
+					autoLockBox.onchange = function() {
+						if (window.setPrivacyAutoLock) window.setPrivacyAutoLock(autoLockBox.checked);
+						showFloatingToast(autoLockBox.checked ?
+							'🔒 Privacy auto-lock: on (blurs after 60s idle)' :
+							'🔓 Privacy auto-lock: off');
+					};
+				}
+				var avatarBox = document.getElementById('wa-blur-avatars');
+				if (avatarBox) {
+					avatarBox.checked = !!(window.isBlurAvatars && window.isBlurAvatars());
+					avatarBox.onchange = function() {
+						if (window.setBlurAvatars) window.setBlurAvatars(avatarBox.checked);
+						showFloatingToast(avatarBox.checked ?
+							'🙈 Profile photos: blurred (hover to peek)' :
+							'🙉 Profile photos: visible');
+					};
+				}
 				document.getElementById('wa-action-toggle-pin').onclick = function() {
 					if (window.toggleAlwaysOnTop) {
 						window.toggleAlwaysOnTop().then(function() { updateBadges(); });
@@ -2235,6 +3562,45 @@ func getInitScript(ua string) string {
 					closeSettings();
 					if (window.showOnboardingModal) window.showOnboardingModal();
 				};
+
+				var shortcutsBtn = document.getElementById('wa-btn-show-shortcuts');
+				var shortcutsList = document.getElementById('wa-shortcuts-list');
+				if (shortcutsBtn && shortcutsList) {
+					var modifier = isMac ? 'Cmd' : 'Ctrl';
+					shortcutsList.innerHTML =
+						'<div><strong class="wa-text-primary">' + modifier + '+,</strong> &mdash; Settings &amp; Controls</div>' +
+						'<div><strong class="wa-text-primary">' + modifier + '+Shift+D</strong> &mdash; Open downloads folder</div>' +
+						'<div><strong class="wa-text-primary">' + modifier + '+Shift+U</strong> &mdash; Check for updates</div>' +
+						'<div><strong class="wa-text-primary">' + modifier + '+Shift+P / T / M / S</strong> &mdash; Privacy / on top / mute / startup</div>' +
+						'<div><strong class="wa-text-primary">Esc</strong> &mdash; Close this window</div>';
+					shortcutsBtn.onclick = function() {
+						var open = shortcutsList.style.display !== 'none';
+						shortcutsList.style.display = open ? 'none' : 'block';
+						shortcutsBtn.textContent = open ? 'View keyboard shortcuts' : 'Hide keyboard shortcuts';
+					};
+				}
+
+				var diagnosticsBtn = document.getElementById('wa-btn-run-diagnostics');
+				var diagnosticsResult = document.getElementById('wa-diagnostics-result');
+				if (diagnosticsBtn && diagnosticsResult) {
+					diagnosticsBtn.onclick = function() {
+						var checks = [];
+						var requiredBindings = ['getDownloadDirNative', 'openDownloadDirNative', 'checkForUpdateNative', 'checkFileExistsNative'];
+						var missing = requiredBindings.filter(function(name) { return typeof window[name] !== 'function'; });
+						checks.push(missing.length ? 'Native bridge: unavailable (' + missing.join(', ') + ')' : 'Native bridge: ready');
+						checks.push(navigator.onLine === false ? 'Network: offline (chat may not refresh)' : 'Network: available');
+						try {
+							var key = 'wa-desk-diagnostic-probe';
+							localStorage.setItem(key, '1');
+							localStorage.removeItem(key);
+							checks.push('Local settings storage: ready');
+						} catch (e) { checks.push('Local settings storage: unavailable (preferences will not persist)'); }
+						var healthy = !missing.length && navigator.onLine !== false;
+						diagnosticsResult.style.display = 'block';
+						diagnosticsResult.style.background = healthy ? 'rgba(0,168,132,.10)' : 'rgba(234,0,56,.10)';
+						diagnosticsResult.innerHTML = '<strong class="wa-text-primary">' + (healthy ? 'Quick check complete' : 'Attention needed') + '</strong><br>' + checks.map(function(line) { return '• ' + line; }).join('<br>');
+					};
+				}
 
 				// Populate current download dir
 				var pathLabel = document.getElementById('wa-folder-path');
@@ -2273,23 +3639,173 @@ func getInitScript(ua string) string {
 						});
 					}
 				};
+
+				var organizeBox = document.getElementById('wa-organize-month');
+				if (organizeBox) {
+					if (window.getOrganizeByMonthNative) {
+						window.getOrganizeByMonthNative().then(function(on) {
+							organizeBox.checked = !!on;
+						}).catch(function() {});
+					}
+					organizeBox.onchange = function() {
+						if (!window.setOrganizeByMonthNative) return;
+						window.setOrganizeByMonthNative(organizeBox.checked).then(function(applied) {
+							showFloatingToast(applied ?
+								'🗂️ Downloads will be organized into monthly folders.' :
+								'🗂️ Downloads save directly to the folder again.');
+						}).catch(function() {});
+					};
+				}
 			};
 
-			// Keyboard Shortcut: Cmd/Ctrl + , (Settings) and Cmd/Ctrl + Shift + D (Open Download Folder)
+		});
+
+		} catch (waInitError) {
+			// A module above failed (an engine API difference, denied
+			// storage, ...). Record it and keep going: everything below
+			// must still be installed.
+			waNoteRecoverable('init-body', waInitError);
+		}
+
+		// --- Core shortcuts (self-contained) ------------------------------
+		// Registered outside the modules above on purpose. The Settings button
+		// and Cmd/Ctrl+, used to disappear together on Windows because a single
+		// exception in an earlier module aborted the rest of the injected
+		// script. The controls the user needs to RECOVER from such a state must
+		// not depend on the modules that can break.
+		waRunModule('core-shortcuts', function() {
+			// Cmd/Ctrl+, opens Settings; Cmd/Ctrl+Shift+D opens the downloads
+			// folder. Both are also reachable from the Control Center itself.
+			function isSettingsChord(e) {
+				return (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey &&
+					(e.key === ',' || e.key === '<' || e.code === 'Comma');
+			}
 			window.addEventListener('keydown', function(e) {
-				if ((e.metaKey || e.ctrlKey) && (e.key === ',' || e.key === '<')) {
+				if (isSettingsChord(e)) {
 					e.preventDefault();
-					window.showSettingsModal();
+					e.stopPropagation();
+					// Never let a broken Control Center swallow the chord: the
+					// shortcut is a recovery path, so it must not throw.
+					try {
+						if (typeof window.showSettingsModal === 'function') {
+							window.showSettingsModal();
+						} else if (typeof window.openRecoveryPanel === 'function') {
+							window.openRecoveryPanel();
+						}
+					} catch (err) {
+						waNoteRecoverable('shortcut-settings', err);
+						if (typeof window.openRecoveryPanel === 'function') {
+							window.openRecoveryPanel();
+						}
+					}
 				} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'd' || e.key === 'D')) {
 					e.preventDefault();
-					if (window.openDownloadDirNative) {
-						window.openDownloadDirNative();
-						showFloatingToast('📁 Opening downloads folder...');
+					e.stopPropagation();
+					try {
+						if (typeof window.openDownloadDirNative === 'function') {
+							window.openDownloadDirNative();
+							if (typeof window.showFloatingToast === 'function') {
+								window.showFloatingToast('📁 Opening downloads folder...');
+							}
+						}
+					} catch (err) {
+						waNoteRecoverable('shortcut-downloads', err);
 					}
 				}
-			});
-		})();
+			}, true);
+		});
+		// --- Emergency Settings entry point -------------------------------
+		// Guarantees a way into Settings even when the Control Center module
+		// above failed to install. Deliberately depends on nothing but the DOM:
+		// if the real button exists it defers to it, otherwise it mounts a
+		// minimal launcher, and if even the modal is missing the launcher opens
+		// a recovery panel with the recorded failures.
+		waRunModule('emergency-settings', function() {
+			function realEntryPointPresent() {
+				return !!document.getElementById('wa-toolbar-settings-btn') ||
+					!!document.getElementById('wa-settings-fallback-btn');
+			}
+			function showRecoveryPanel() {
+				var existing = document.getElementById('wa-recovery-overlay');
+				if (existing && existing.parentNode) { existing.parentNode.removeChild(existing); return; }
+				var fails = (typeof window.__waRecoverable === 'function') ? window.__waRecoverable() : [];
+				var overlay = document.createElement('div');
+				overlay.id = 'wa-recovery-overlay';
+				overlay.style.cssText = 'position:fixed;inset:0;background:rgba(8,15,19,.72);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;';
+				var card = document.createElement('div');
+				card.style.cssText = 'width:440px;max-width:94vw;max-height:80vh;overflow:auto;background:#111b21;color:#e9edef;border:1px solid rgba(134,150,160,.35);border-radius:10px;padding:18px 20px;box-shadow:0 18px 48px rgba(0,0,0,.4);font-size:12.5px;line-height:1.6;';
+				var rows = fails.length
+					? fails.map(function(f) { return '<li>' + String(f).replace(/[<>&]/g, '') + '</li>'; }).join('')
+					: '<li>No failures recorded.</li>';
+				card.innerHTML =
+					'<strong style="font-size:14px;">WhatsApp Desk — recovery</strong>' +
+					'<p style="opacity:.8;margin:8px 0 10px;">The Settings panel did not load. Recorded problems:</p>' +
+					'<ul style="margin:0 0 14px;padding-left:18px;opacity:.9;">' + rows + '</ul>' +
+					'<button id="wa-recovery-reload" style="background:#00a884;color:#111b21;border:none;padding:8px 14px;border-radius:6px;font-weight:600;cursor:pointer;">Reload WhatsApp Web</button>';
+				overlay.appendChild(card);
+				document.body.appendChild(overlay);
+				var btn = document.getElementById('wa-recovery-reload');
+				if (btn) {
+					btn.onclick = function() {
+						if (typeof window.reloadWhatsApp === 'function') { window.reloadWhatsApp(); }
+						else { window.location.reload(); }
+					};
+				}
+			}
+			function openSettings() {
+				if (typeof window.showSettingsModal === 'function') {
+					try { window.showSettingsModal(); return; } catch (e) { waNoteRecoverable('showSettingsModal', e); }
+				}
+				showRecoveryPanel();
+			}
+			window.openRecoveryPanel = showRecoveryPanel;
+			// The last-resort launcher must never sit next to a working control:
+			// it is a lifeline for the case where the other entry points failed,
+			// not an extra gear. So it only mounts while no *visible* entry point
+			// exists, and unmounts again as soon as one appears.
+			function visibleEntryPointPresent() {
+				var ids = ['wa-toolbar-settings-btn', 'wa-settings-fallback-btn'];
+				for (var i = 0; i < ids.length; i++) {
+					var el = document.getElementById(ids[i]);
+					if (!el || el.style.display === 'none') continue;
+					var r = el.getBoundingClientRect();
+					if (r.width > 0 && r.height > 0) return true;
+				}
+				return false;
+			}
+			function mount() {
+				var existing = document.getElementById('wa-emergency-settings-btn');
+				if (visibleEntryPointPresent()) {
+					if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+					return;
+				}
+				if (existing) return;
+				if (!document.body) return;
+				var btn = document.createElement('button');
+				btn.id = 'wa-emergency-settings-btn';
+				btn.type = 'button';
+				btn.setAttribute('aria-label', 'Open Settings');
+				btn.title = 'Settings & Controls';
+				btn.textContent = '\u2699';
+				btn.style.cssText = 'position:fixed;left:14px;bottom:14px;z-index:2147483646;width:36px;height:36px;padding:0;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(134,150,160,.45);border-radius:50%;background:#111b21;color:#aebac1;font-size:17px;line-height:1;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.3);';
+				btn.onclick = function(e) { e.preventDefault(); e.stopPropagation(); openSettings(); };
+				document.body.appendChild(btn);
+			}
+			// The rail fallback announces every mount/hide so this launcher can
+			// re-evaluate: it must disappear the moment a real control appears.
+			window.__waRecheckEmergencySettings = mount;
+			mount();
+			document.addEventListener('DOMContentLoaded', mount);
+			window.addEventListener('load', mount);
+			// The Control Center mounts asynchronously after WhatsApp's own boot.
+			setTimeout(mount, 1200);
+			setTimeout(mount, 4000);
+		});
+
 	` + "\n" + getOnboardingScript()
+	// Single source of truth: every UI version string flows from appVersion
+	// (overridable at link time via -ldflags "-X main.appVersion=...").
+	return strings.ReplaceAll(script, "__WA_APP_VERSION__", appVersion)
 }
 
 type WindowState struct {
@@ -2297,11 +3813,17 @@ type WindowState struct {
 	Y      float64 `json:"y"`
 	Width  float64 `json:"width"`
 	Height float64 `json:"height"`
+	// Screens maps a stable display identifier (macOS NSScreenNumber) to the
+	// frame the window had on that monitor. Only macOS populates it; other
+	// platforms round-trip it unchanged.
+	Screens map[string]WindowState `json:"screens,omitempty"`
 }
 
 func main() {
-	if !validateBuildEnvironment() {
-		return
-	}
+	defer func() {
+		if r := recover(); r != nil {
+			writeCrashReport("main", r)
+		}
+	}()
 	runApp()
 }

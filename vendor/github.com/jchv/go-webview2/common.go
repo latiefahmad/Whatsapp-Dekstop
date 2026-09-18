@@ -79,6 +79,11 @@ type WebView interface {
 	// to receive notifications about the results of the evaluation.
 	Eval(js string)
 
+	// SetBrowserAcceleratorKeysEnabled controls whether the engine handles its
+	// own browser accelerator keys (F5, Ctrl+R, Ctrl+Shift+T, ...). When disabled,
+	// the hosted page receives those keys instead.
+	SetBrowserAcceleratorKeysEnabled(enabled bool) error
+
 	// Bind binds a callback function so that it will appear under the given name
 	// as a global JavaScript function. Internally it uses webview_init().
 	// Callback receives a request string and a user-provided argument pointer.

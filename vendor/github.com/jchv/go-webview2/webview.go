@@ -462,6 +462,22 @@ func (w *webview) Dispatch(f func()) {
 	_, _, _ = w32.User32PostThreadMessageW.Call(w.mainthread, w32.WMApp, 0, 0)
 }
 
+// SetBrowserAcceleratorKeysEnabled controls whether the WebView2 engine
+// consumes its own browser accelerator keys (F5, Ctrl+R, Ctrl+Shift+T, ...).
+// Disabling them lets the hosted page handle those combinations itself, which
+// is how the macOS WKWebView build already behaves.
+func (w *webview) SetBrowserAcceleratorKeysEnabled(enabled bool) error {
+	c, ok := w.browser.(*edge.Chromium)
+	if !ok {
+		return errors.New("browser accelerator keys are only configurable on Windows")
+	}
+	settings, err := c.GetSettings()
+	if err != nil {
+		return err
+	}
+	return settings.PutAreBrowserAcceleratorKeysEnabled(enabled)
+}
+
 func (w *webview) Bind(name string, f interface{}) error {
 	v := reflect.ValueOf(f)
 	if v.Kind() != reflect.Func {

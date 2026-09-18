@@ -1,87 +1,124 @@
-# WhatsApp Desk
-
-[![Release](https://img.shields.io/github/v/release/vianziro/Whatsapp-Dekstop?label=release)](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-555)](https://github.com/vianziro/Whatsapp-Dekstop/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-555.svg)](LICENSE)
-
-WhatsApp Desk is a small desktop wrapper for the official WhatsApp Web. It uses the web engine already provided by each operating system: WebKit on macOS, WebView2 on Windows, and WebKitGTK on Linux.
-
-## Application preview
-
 <p align="center">
-  <img src="screenshots/app-dark.png" width="900" alt="WhatsApp Desk main chat window">
+  <img src="screenshots/hero-banner.png" width="100%" alt="WhatsApp Desk - Native, Ultra-Light, Private Desktop Client">
 </p>
 
 <p align="center">
-  <img src="screenshots/macos-menu.png" width="650" alt="WhatsApp Desk settings and appearance controls">
+  <a href="https://github.com/vianziro/Whatsapp-Dekstop/releases/latest"><img src="https://img.shields.io/github/v/release/vianziro/Whatsapp-Dekstop?label=release&color=18c77b&style=flat-square" alt="Latest Release"></a>
+  <a href="https://github.com/vianziro/Whatsapp-Dekstop/releases"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-0b1713?style=flat-square" alt="Platforms"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-18c77b?style=flat-square" alt="License: MIT"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.26+-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go Version"></a>
+  <a href="https://github.com/vianziro/Whatsapp-Dekstop/releases/latest"><img src="https://img.shields.io/badge/architecture-Universal%20%7C%20x64-555?style=flat-square" alt="Architecture"></a>
 </p>
 
-The screenshots use blurred chat content to protect personal information.
+<p align="center">
+  <strong>WhatsApp Desk</strong> is a fast, ultra-lightweight, privacy-respecting desktop client for <a href="https://web.whatsapp.com">WhatsApp Web</a>.<br>
+  Built with native operating system web engines — <strong>WebKit</strong> on macOS, <strong>WebView2</strong> on Windows, and <strong>WebKitGTK</strong> on Linux.<br>
+  <em>Zero Electron bloat • Zero telemetry • Zero message relay servers • Complete local privacy.</em>
+</p>
 
-## Download
+---
 
-Current release: **v1.5.7**
+## ⚡ Downloads
 
-| Platform | Download |
-| --- | --- |
-| macOS, Apple Silicon and Intel | [DMG](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg) · [ZIP](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.zip) |
-| Windows 10/11 x64 | [EXE](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsAppDesk.exe) · [ZIP](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64.zip) |
-| Debian/Ubuntu x64 | [DEB](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-amd64.deb) · [tar.gz](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-x64.tar.gz) |
-| Debian/Ubuntu arm64 | [DEB](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-arm64.deb) · [tar.gz](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-arm64.tar.gz) |
-| Fedora/RHEL x64 | [RPM](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Linux-x64.rpm) |
+Get the latest stable release for your operating system (updated automatically):
 
-## Main features
+| Platform | Recommended Installer | Portable / Archive | Requirements |
+| :--- | :--- | :--- | :--- |
+| **macOS** | [**Universal DMG**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg) | [Universal ZIP](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.zip) | macOS 11.0+ (Apple Silicon & Intel) |
+| **Windows 10 / 11** | [**Setup Wizard (.exe)**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64-Setup.exe) | [Portable EXE](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsAppDesk.exe) | Windows 10/11 x64 (WebView2 runtime) |
+| **Linux** | [**Browse Releases (DEB / RPM)**](https://github.com/vianziro/Whatsapp-Dekstop/releases) | [tar.gz Archives](https://github.com/vianziro/Whatsapp-Dekstop/releases) | GTK 3 & WebKitGTK |
 
-- Persistent WhatsApp Web session.
-- Preview for PDF, Word, Excel, PowerPoint, CSV, and text files.
-- Reopens files already downloaded without fetching them again.
-- Configurable download folder.
-- Privacy mode, always-on-top, audio mute, zoom, and theme controls.
-- Native menus, notifications, and automatic update checks.
-- Universal macOS build and portable Windows build.
+> [!TIP]
+> Download links point automatically to the latest release assets. You can also view all past versions and architectures on the [Releases](https://github.com/vianziro/Whatsapp-Dekstop/releases) page.
 
-RAM and CPU usage depend on the operating system, active chats, calls, media, and the web engine version.
+---
 
-## Installation
+## ✨ Key Features
 
-### macOS
+* 🚀 **Ultra-Lightweight Engine:** Built directly on native OS webviews (WebKit on macOS, WebView2 on Windows, WebKitGTK on Linux). Minimal RAM and battery footprint compared to Chromium/Electron apps.
+* 🛡️ **Zero Telemetry & Private by Design:** Communicates straight with `https://web.whatsapp.com`. No analytics tracking, no user profiling, and no proxy or relay servers.
+* 👁️ **Instant Privacy Mode & Auto-Lock:** Quickly redact chat previews, sender names, and media thumbnails with a shortcut (`Ctrl+Shift+P` / `Cmd+Shift+P`) or automatic lock on idle.
+* 📄 **Built-in Document & Office Preview:** Instant in-app previews for PDFs, Word docs, Excel spreadsheets, PowerPoint slides, and text attachments without cluttering your drive with duplicate files.
+* 🛠️ **Windows Setup Wizard:** Per-user installer with branded artwork, Start Menu and desktop shortcuts, and clean uninstallation in Windows Apps & Features.
+* ⚙️ **Unified Settings & Module Guard:** Single accessible settings control (`Ctrl+,` / `Cmd+,`) protected by runtime module isolation (`waRunModule`) against unexpected DOM changes.
+* 🔄 **Built-in Self Updater:** Automatic update notifications with cryptographic `SHA256SUMS` validation before applying updates.
+* 🖥️ **Per-Monitor Window Memory:** Automatically remembers window position and dimension across multi-monitor setups.
 
-1. Open the DMG.
-2. Drag **WhatsApp Desk** into **Applications**.
-3. If macOS blocks the first launch, right-click the app and choose **Open**.
+---
 
-The macOS build supports Apple Silicon and Intel. Camera and microphone permission will be requested only when needed.
+## 📸 Application Preview
 
-### Windows
+<p align="center">
+  <img src="screenshots/app-dark.png" width="900" alt="WhatsApp Desk Main Chat Window">
+</p>
 
-Download and run `WhatsAppDesk.exe`. Microsoft Edge WebView2 is required and is normally already installed on current Windows 10 and Windows 11 systems.
+<p align="center">
+  <img src="screenshots/macos-menu.png" width="620" alt="WhatsApp Desk Settings and Customization Panel">
+</p>
 
-If SmartScreen appears, review the publisher warning, choose **More info**, and continue only if the file came from this repository's release page.
+*Note: Screenshots use blurred chat content to protect personal information.*
 
-### Debian/Ubuntu
+---
 
+## ⌨️ Keyboard Shortcuts
+
+| Feature | macOS | Windows & Linux |
+| :--- | :--- | :--- |
+| **Open Settings** | <kbd>Cmd</kbd> + <kbd>,</kbd> | <kbd>Ctrl</kbd> + <kbd>,</kbd> |
+| **Toggle Privacy Mode** | <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> |
+| **Toggle Always on Top** | <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd> |
+| **Mute / Unmute Audio** | <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd> | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>M</kbd> |
+| **Open Downloads Folder** | <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> |
+| **Check for Updates** | <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>U</kbd> | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>U</kbd> |
+| **Hard Refresh Web View** | <kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> | <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd> |
+| **Zoom In / Out / Reset** | <kbd>Cmd</kbd> + <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd> | <kbd>Ctrl</kbd> + <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd> |
+
+---
+
+## 📦 Installation & Setup
+
+### macOS (Universal)
+1. Download [**WhatsApp-Desk-macOS-Universal.dmg**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-macOS-Universal.dmg).
+2. Open the DMG and drag **WhatsApp Desk** into **Applications**.
+3. *First launch:* If macOS Gatekeeper alerts you, right-click the application and select **Open**.
+
+### Windows 10 / 11 (x64)
+1. Download and run [**WhatsApp-Desk-Windows-x64-Setup.exe**](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/WhatsApp-Desk-Windows-x64-Setup.exe).
+2. The setup wizard installs WhatsApp Desk per-user (no Administrator rights required) and adds Start Menu and desktop shortcuts.
+3. *SmartScreen Note:* Since community binaries are unsigned (no EV certificate), choose **More info** → **Run anyway**.
+
+### Linux (Debian / Ubuntu / Fedora)
 ```bash
+# Debian / Ubuntu (x64)
 sudo dpkg -i WhatsApp-Desk-Linux-amd64.deb
 sudo apt-get install -f
+
+# Fedora / RHEL (x64)
+sudo dnf install ./WhatsApp-Desk-Fedora-x64.rpm
 ```
 
-The portable archive requires GTK 3 and WebKitGTK 4.0 or 4.1.
+### Verifying Release Integrity
 
-## Shortcuts
+Every release ships with a signed [SHA256SUMS](https://github.com/vianziro/Whatsapp-Dekstop/releases/latest/download/SHA256SUMS) checksum list:
 
-| Action | macOS | Windows/Linux |
-| --- | --- | --- |
-| Settings | `Cmd + ,` | `Ctrl + ,` |
-| Privacy mode | `Cmd + Shift + P` | `Ctrl + Shift + P` |
-| Always on top | `Cmd + Shift + T` | `Ctrl + Shift + T` |
-| Mute audio | `Cmd + Shift + M` | `Ctrl + Shift + M` |
-| Open downloads | `Cmd + Shift + D` | `Ctrl + Shift + D` |
-| Check updates | `Cmd + Shift + U` | `Ctrl + Shift + U` |
-| Hard refresh | `Cmd + Shift + R` | `Ctrl + Shift + R` |
+```bash
+# macOS
+shasum -a 256 -c SHA256SUMS
+
+# Linux
+sha256sum -c SHA256SUMS
+
+# Windows PowerShell
+(Get-FileHash .\WhatsApp-Desk-Windows-x64-Setup.exe -Algorithm SHA256).Hash.ToLower()
+```
+
+---
 
 ## Privacy
 
 WhatsApp Desk loads `https://web.whatsapp.com` directly. Session and cache data remain inside the application's local profile. The application does not add an analytics service or a message relay server.
+
+Errors and crash logs stay on your machine. Nothing is ever uploaded automatically: the Control Center's Report button (or the post-crash nudge) only opens a pre-filled GitHub issue in your browser, which you review before submitting.
 
 Default profile locations:
 
@@ -89,13 +126,15 @@ Default profile locations:
 - Windows: `%APPDATA%\WhatsAppDesk\UserData\`
 - Linux: `~/.config/whatsapp-desk/`
 
-## Version 1.5.7
+---
 
-- Attach menu works on macOS: Document and Photos & videos now open the native file picker.
-- Files are no longer saved twice when a download is triggered from two paths.
-- All v1.5.6 fixes included: silent background update on Windows (no console flashes), Fedora RPM packages, reliable document preview and appearance switching.
+## 📜 Release Notes & Changelog
 
-Older releases are retained for reference but are deprecated.
+All release notes, detailed change lists, and verification hashes are maintained on GitHub:
+
+👉 **[View All Releases & Changelogs on GitHub](https://github.com/vianziro/Whatsapp-Dekstop/releases)**
+
+---
 
 ## License and disclaimer
 
